@@ -25,9 +25,6 @@ pub enum AccuChekError {
     #[error("Invalid device index: {0}")]
     InvalidDeviceIndex(usize),
 
-    #[error("Empty data segment")]
-    EmptyDataSegment,
-
     #[error("Association aborted by device")]
     AssociationAborted,
 

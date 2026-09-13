@@ -62,11 +62,6 @@ impl Storage {
         }
     }
 
-    /// Compatibility method for callers inserting one reading at a time.
-    pub fn insert_reading(&self, reading: &GlucoseReading) -> Result<Option<i64>> {
-        self.insert_reading_with_occurrence(reading, 0)
-    }
-
     /// Bulk import with duplicate-occurrence accounting. This preserves two identical readings
     /// taken within the same meter minute without creating duplicates on subsequent syncs.
     pub fn import_readings(&self, readings: &[GlucoseReading]) -> Result<usize> {
@@ -108,8 +103,10 @@ impl Storage {
                     device_key, occurrence, note, tags, imported_at
              FROM readings ORDER BY epoch, id",
         )?;
-        stmt.query_map([], Self::row_to_stored_reading)?
-            .collect::<Result<Vec<_>>>()
+        let readings = stmt
+            .query_map([], Self::row_to_stored_reading)?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(readings)
     }
 
     /// At present all meter records are included in numerical analysis. The raw IEEE 11073
@@ -129,8 +126,10 @@ impl Storage {
         let mut stmt = self
             .conn
             .prepare("SELECT mg_dl FROM readings ORDER BY epoch, id")?;
-        stmt.query_map([], |row| row.get::<_, u16>(0))?
-            .collect::<Result<Vec<_>>>()
+        let values = stmt
+            .query_map([], |row| row.get::<_, u16>(0))?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(values)
     }
 
     pub fn get_all_values_both(&self) -> Result<(Vec<u16>, Vec<f64>)> {

@@ -113,10 +113,10 @@ fn build_release_request() -> Vec<u8> {
     msg
 }
 
-fn find_object<'a>(
-    buffer: &'a [u8],
+fn find_object(
+    buffer: &[u8],
     requested_class: u16,
-) -> Result<(&'a [u8], u16, u16), AccuChekError> {
+) -> Result<(&[u8], u16, u16), AccuChekError> {
     require_len(buffer, 28, "configuration report")?;
     let count = u16_at(buffer, 24, "configuration object count")?;
     let mut offset = 28usize;
@@ -138,11 +138,11 @@ fn find_object<'a>(
     Err(protocol_error("configuration report", "requested object not found"))
 }
 
-fn find_attribute<'a>(
-    buffer: &'a [u8],
+fn find_attribute(
+    buffer: &[u8],
     attribute_count: u16,
     requested_class: u16,
-) -> Result<&'a [u8], AccuChekError> {
+) -> Result<&[u8], AccuChekError> {
     let mut offset = 0usize;
     for _ in 0..attribute_count {
         require_len(buffer, offset + 4, "attribute header")?;
@@ -158,7 +158,7 @@ fn find_attribute<'a>(
     Err(protocol_error("attribute list", format!("attribute {} not found", requested_class)))
 }
 
-fn mds_attribute<'a>(buffer: &'a [u8], requested_class: u16) -> Result<&'a [u8], AccuChekError> {
+fn mds_attribute(buffer: &[u8], requested_class: u16) -> Result<&[u8], AccuChekError> {
     require_len(buffer, 18, "MDS response")?;
     let attribute_count = u16_at(buffer, 14, "MDS attribute count")?;
     let payload_len = u16_at(buffer, 16, "MDS attribute list length")? as usize;
@@ -166,7 +166,7 @@ fn mds_attribute<'a>(buffer: &'a [u8], requested_class: u16) -> Result<&'a [u8],
     find_attribute(&buffer[18..18 + payload_len], attribute_count, requested_class)
 }
 
-fn production_spec_entry<'a>(buffer: &'a [u8], requested_type: u16) -> Result<&'a [u8], AccuChekError> {
+fn production_spec_entry(buffer: &[u8], requested_type: u16) -> Result<&[u8], AccuChekError> {
     require_len(buffer, 2, "production specification")?;
     let count = u16_at(buffer, 0, "production specification count")?;
     let mut offset = 0usize;
@@ -218,7 +218,7 @@ fn model_name(number: Option<u16>) -> String {
         958 | 959 | 960 | 961 | 963 | 964 | 965 => "Instant (single-button)",
         897 | 898 | 901 | 902 | 903 | 904 | 905 => "Guide Me",
         972 | 973 | 975 | 976 | 977 | 978 | 979 | 980 => "Instant (two-button)",
-        966 | 967 | 968 | 969 | 970 | 971 => "Instant S (single-button)",
+        966..=971 => "Instant S (single-button)",
         982 => "ReliOn Platinum",
         _ => return format!("Unknown model {}", number),
     };

@@ -17,7 +17,7 @@ use std::io::Write;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
-use crate::device::find_and_operate_accuchek;
+use crate::device::find_and_download_accuchek;
 use crate::storage::{Storage, StoredReading};
 use crate::units::{GlucoseUnit, Thresholds, GlucoseRange};
 use crate::stats::{BasicStats, TimeInRange, DailyStats, HourlyStats, TimeBinStats, HistogramBin, CalendarDay, ExportStatistics};
@@ -278,12 +278,15 @@ impl AccuChekApp {
             
             match rusb::Context::new() {
                 Ok(context) => {
-                    match find_and_operate_accuchek(&context, &config, None) {
-                        Ok(readings) => {
-                            let total = readings.len();
+                    match find_and_download_accuchek(&context, &config, None) {
+                        Ok(download) => {
+                            let total = download.readings.len();
                             match Storage::new(&db_path) {
                                 Ok(storage) => {
-                                    match storage.import_readings(&readings) {
+                                    let import_result = storage
+                                        .upsert_device(&download.device)
+                                        .and_then(|_| storage.import_readings(&download.readings));
+                                    match import_result {
                                         Ok(new_count) => {
                                             let _ = tx.send(SyncMessage::Success { new_count, total_from_device: total });
                                         }

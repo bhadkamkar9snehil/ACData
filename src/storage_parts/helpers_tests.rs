@@ -46,6 +46,38 @@ mod tests {
     }
 
     #[test]
+    fn device_metadata_is_persisted_and_updated_by_device_key() {
+        let storage = memory_storage();
+        let mut device = DeviceMetadata {
+            vendor_id: 0x173a,
+            product_id: 0x21d7,
+            manufacturer: "Roche".to_string(),
+            usb_product: "Accu-Chek Instant".to_string(),
+            usb_serial: Some("usb-serial".to_string()),
+            model_number: Some(958),
+            model_name: "Instant (single-button)".to_string(),
+            serial_number: Some("meter-serial".to_string()),
+            meter_time: Some("2026-09-13T08:00:00".to_string()),
+            device_key: "roche-173a-21d7-test-meter".to_string(),
+        };
+
+        storage.upsert_device(&device).unwrap();
+        device.meter_time = Some("2026-09-13T09:00:00".to_string());
+        storage.upsert_device(&device).unwrap();
+
+        let (count, meter_time): (i64, Option<String>) = storage
+            .conn
+            .query_row(
+                "SELECT COUNT(*), MAX(meter_time) FROM devices WHERE device_key = ?1",
+                [&device.device_key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(meter_time.as_deref(), Some("2026-09-13T09:00:00"));
+    }
+
+    #[test]
     fn identical_same_minute_readings_are_preserved_as_occurrences() {
         let storage = memory_storage();
         let rows = vec![

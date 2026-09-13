@@ -28,7 +28,7 @@ mod export;
 
 use std::env;
 use log::{info, warn};
-use crate::device::find_and_operate_accuchek;
+use crate::device::find_and_download_accuchek;
 use crate::config::{Config, default_database_path, ensure_data_dir, config_file_path};
 use crate::error::AccuChekError;
 use crate::storage::Storage;
@@ -170,10 +170,12 @@ fn cmd_sync(config: &Config, db_path: &str, device_index: Option<&String>) -> Re
     let context = rusb::Context::new()?;
     
     // Find and operate the device
-    let readings = find_and_operate_accuchek(&context, config, device_index)?;
+    let download = find_and_download_accuchek(&context, config, device_index)?;
 
     // Save to database
     let storage = Storage::new(db_path)?;
+    storage.upsert_device(&download.device)?;
+    let readings = download.readings;
     let new_count = storage.import_readings(&readings)?;
     let total_count = storage.count()?;
     let skipped_count = readings.len() - new_count;

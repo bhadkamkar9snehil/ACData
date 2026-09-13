@@ -513,7 +513,7 @@ impl ExportStatistics {
         let mgdl_values: Vec<u16> = readings.iter().map(|r| r.mg_dl()).collect();
         let mmol_values: Vec<f64> = readings.iter().map(|r| r.mmol_l()).collect();
         
-        let basic = BasicStats::from_values(&mgdl_values, &mmol_values).unwrap_or_else(|| {
+        let basic = BasicStats::from_values(&mgdl_values, &mmol_values).unwrap_or({
             BasicStats {
                 mgdl: MgDlStats { count: 0, mean: 0.0, std_dev: 0.0, min: 0, max: 0, median: 0, q1: 0, q3: 0 },
                 mmol: MmolLStats { count: 0, mean: 0.0, std_dev: 0.0, min: 0.0, max: 0.0, median: 0.0, q1: 0.0, q3: 0.0 },

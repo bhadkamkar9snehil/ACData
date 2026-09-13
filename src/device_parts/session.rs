@@ -223,12 +223,3 @@ pub fn find_and_download_accuchek(
     accu_chek.show(&format!("selected Accu-Chek device #{}", selected_index));
     operate_device(device, accu_chek)
 }
-
-/// Compatibility API used by the existing CLI/egui application.
-pub fn find_and_operate_accuchek(
-    context: &Context,
-    config: &Config,
-    device_index: Option<usize>,
-) -> Result<Vec<GlucoseReading>, AccuChekError> {
-    Ok(find_and_download_accuchek(context, config, device_index)?.readings)
-}
