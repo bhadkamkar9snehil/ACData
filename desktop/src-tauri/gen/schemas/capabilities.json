@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Only the core application window; no network or filesystem capability is exposed to React.","local":true,"windows":["main"],"permissions":["core:default"]}}

@@ -22,6 +22,9 @@ pub enum AccuChekError {
     #[error("Device communication error: {0}")]
     Communication(String),
 
+    #[error("Invalid command-line arguments: {0}")]
+    InvalidArguments(String),
+
     #[error("Invalid device index: {0}")]
     InvalidDeviceIndex(usize),
 

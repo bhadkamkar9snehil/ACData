@@ -3,8 +3,8 @@
 //! This module computes statistics in BOTH mg/dL and mmol/L independently,
 //! using the direct device values without any conversion.
 
+use crate::units::{GlucoseRange, GlucoseUnit, Thresholds};
 use serde::{Deserialize, Serialize};
-use crate::units::{Thresholds, GlucoseRange, GlucoseUnit};
 
 /// Statistical measures for mg/dL values (integer)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,8 +15,8 @@ pub struct MgDlStats {
     pub min: u16,
     pub max: u16,
     pub median: u16,
-    pub q1: u16,  // 25th percentile
-    pub q3: u16,  // 75th percentile
+    pub q1: u16, // 25th percentile
+    pub q3: u16, // 75th percentile
 }
 
 /// Statistical measures for mmol/L values (float)
@@ -28,8 +28,8 @@ pub struct MmolLStats {
     pub min: f64,
     pub max: f64,
     pub median: f64,
-    pub q1: f64,  // 25th percentile
-    pub q3: f64,  // 75th percentile
+    pub q1: f64, // 25th percentile
+    pub q3: f64, // 75th percentile
 }
 
 /// Basic statistical measures in both units
@@ -49,10 +49,10 @@ impl MgDlStats {
         let count = values.len();
         let mean = values.iter().map(|&v| v as f64).sum::<f64>() / count as f64;
         let std_dev = calculate_std_dev_u16(values, mean);
-        
+
         let mut sorted = values.to_vec();
         sorted.sort_unstable();
-        
+
         Some(Self {
             count,
             mean,
@@ -85,10 +85,10 @@ impl MmolLStats {
         let count = values.len();
         let mean = values.iter().sum::<f64>() / count as f64;
         let std_dev = calculate_std_dev_f64(values, mean);
-        
+
         let mut sorted = values.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        
+
         Some(Self {
             count,
             mean,
@@ -277,7 +277,9 @@ impl TimeInRange {
 
     /// Get low percentage (combined very low + low)
     pub fn low_percent(&self) -> f64 {
-        if self.total == 0 { 0.0 } else {
+        if self.total == 0 {
+            0.0
+        } else {
             (self.total_low() as f64 / self.total as f64) * 100.0
         }
     }
@@ -289,7 +291,9 @@ impl TimeInRange {
 
     /// Get high percentage (combined high + very high)
     pub fn high_percent(&self) -> f64 {
-        if self.total == 0 { 0.0 } else {
+        if self.total == 0 {
+            0.0
+        } else {
             (self.total_high() as f64 / self.total as f64) * 100.0
         }
     }
@@ -312,21 +316,26 @@ pub struct DailyStats {
 #[allow(dead_code)]
 impl DailyStats {
     /// Create daily stats from parallel values
-    pub fn new(date: String, mgdl_values: &[u16], mmol_values: &[f64], thresholds: Thresholds) -> Self {
+    pub fn new(
+        date: String,
+        mgdl_values: &[u16],
+        mmol_values: &[f64],
+        thresholds: Thresholds,
+    ) -> Self {
         let count = mgdl_values.len();
-        
+
         let avg_mgdl = if count > 0 {
             mgdl_values.iter().map(|&v| v as f64).sum::<f64>() / count as f64
         } else {
             0.0
         };
-        
+
         let avg_mmol = if count > 0 {
             mmol_values.iter().sum::<f64>() / count as f64
         } else {
             0.0
         };
-        
+
         Self {
             date,
             count,
@@ -335,7 +344,10 @@ impl DailyStats {
             min_mgdl: mgdl_values.iter().copied().min().unwrap_or(0),
             min_mmol: mmol_values.iter().copied().fold(f64::INFINITY, f64::min),
             max_mgdl: mgdl_values.iter().copied().max().unwrap_or(0),
-            max_mmol: mmol_values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            max_mmol: mmol_values
+                .iter()
+                .copied()
+                .fold(f64::NEG_INFINITY, f64::max),
             tir: TimeInRange::from_values(mgdl_values, thresholds),
         }
     }
@@ -362,7 +374,12 @@ impl HourlyStats {
     /// Create hourly stats for a given hour
     pub fn new(hour: u8, mgdl_readings: Vec<u16>, mmol_readings: Vec<f64>) -> Self {
         let stats = BasicStats::from_values(&mgdl_readings, &mmol_readings);
-        Self { hour, mgdl_readings, mmol_readings, stats }
+        Self {
+            hour,
+            mgdl_readings,
+            mmol_readings,
+            stats,
+        }
     }
 
     pub fn count(&self) -> usize {
@@ -384,7 +401,14 @@ pub struct TimeBinStats {
 
 impl TimeBinStats {
     /// Create time bin stats
-    pub fn new(name: &str, description: &str, hour_start: u8, hour_end: u8, mgdl_readings: Vec<u16>, mmol_readings: Vec<f64>) -> Self {
+    pub fn new(
+        name: &str,
+        description: &str,
+        hour_start: u8,
+        hour_end: u8,
+        mgdl_readings: Vec<u16>,
+        mmol_readings: Vec<f64>,
+    ) -> Self {
         let stats = BasicStats::from_values(&mgdl_readings, &mmol_readings);
         Self {
             name: name.to_string(),
@@ -411,21 +435,27 @@ pub struct HistogramBin {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalendarDay {
     pub date: String,
-    pub day_of_week: u8,  // 0=Monday, 6=Sunday
+    pub day_of_week: u8, // 0=Monday, 6=Sunday
     pub week_of_year: u32,
-    pub readings: Vec<(u8, u16, f64)>,  // (hour, mg_dl, mmol_l)
+    pub readings: Vec<(u8, u16, f64)>, // (hour, mg_dl, mmol_l)
     pub stats: Option<BasicStats>,
     pub tir: TimeInRange,
 }
 
 impl CalendarDay {
     /// Create calendar day data
-    pub fn new(date: String, day_of_week: u8, week_of_year: u32, readings: Vec<(u8, u16, f64)>, thresholds: Thresholds) -> Self {
+    pub fn new(
+        date: String,
+        day_of_week: u8,
+        week_of_year: u32,
+        readings: Vec<(u8, u16, f64)>,
+        thresholds: Thresholds,
+    ) -> Self {
         let mgdl_values: Vec<u16> = readings.iter().map(|(_, v, _)| *v).collect();
         let mmol_values: Vec<f64> = readings.iter().map(|(_, _, v)| *v).collect();
         let stats = BasicStats::from_values(&mgdl_values, &mmol_values);
         let tir = TimeInRange::from_values(&mgdl_values, thresholds);
-        
+
         Self {
             date,
             day_of_week,
@@ -474,9 +504,11 @@ fn calculate_std_dev_u16(values: &[u16], mean: f64) -> f64 {
     if values.len() < 2 {
         return 0.0;
     }
-    let variance: f64 = values.iter()
+    let variance: f64 = values
+        .iter()
         .map(|&v| (v as f64 - mean).powi(2))
-        .sum::<f64>() / (values.len() - 1) as f64;
+        .sum::<f64>()
+        / (values.len() - 1) as f64;
     variance.sqrt()
 }
 
@@ -485,9 +517,8 @@ fn calculate_std_dev_f64(values: &[f64], mean: f64) -> f64 {
     if values.len() < 2 {
         return 0.0;
     }
-    let variance: f64 = values.iter()
-        .map(|&v| (v - mean).powi(2))
-        .sum::<f64>() / (values.len() - 1) as f64;
+    let variance: f64 =
+        values.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
     variance.sqrt()
 }
 
@@ -506,27 +537,52 @@ pub struct ExportStatistics {
 
 impl ExportStatistics {
     /// Generate all export statistics from stored readings
-    pub fn generate<R>(readings: &[R], thresholds: Thresholds) -> Self 
+    pub fn generate<R>(readings: &[R], thresholds: Thresholds) -> Self
     where
         R: ReadingData,
     {
         let mgdl_values: Vec<u16> = readings.iter().map(|r| r.mg_dl()).collect();
         let mmol_values: Vec<f64> = readings.iter().map(|r| r.mmol_l()).collect();
-        
+
         let basic = BasicStats::from_values(&mgdl_values, &mmol_values).unwrap_or({
             BasicStats {
-                mgdl: MgDlStats { count: 0, mean: 0.0, std_dev: 0.0, min: 0, max: 0, median: 0, q1: 0, q3: 0 },
-                mmol: MmolLStats { count: 0, mean: 0.0, std_dev: 0.0, min: 0.0, max: 0.0, median: 0.0, q1: 0.0, q3: 0.0 },
+                mgdl: MgDlStats {
+                    count: 0,
+                    mean: 0.0,
+                    std_dev: 0.0,
+                    min: 0,
+                    max: 0,
+                    median: 0,
+                    q1: 0,
+                    q3: 0,
+                },
+                mmol: MmolLStats {
+                    count: 0,
+                    mean: 0.0,
+                    std_dev: 0.0,
+                    min: 0.0,
+                    max: 0.0,
+                    median: 0.0,
+                    q1: 0.0,
+                    q3: 0.0,
+                },
             }
         });
         let tir = TimeInRange::from_values(&mgdl_values, thresholds);
-        
+
         let daily = Self::calculate_daily(readings, thresholds);
         let hourly = Self::calculate_hourly(readings);
         let time_bins = Self::calculate_time_bins(readings);
         let histogram = Self::calculate_histogram(&mgdl_values);
-        
-        Self { basic, tir, daily, hourly, time_bins, histogram }
+
+        Self {
+            basic,
+            tir,
+            daily,
+            hourly,
+            time_bins,
+            histogram,
+        }
     }
 
     fn calculate_daily<R: ReadingData>(readings: &[R], thresholds: Thresholds) -> Vec<DailyStats> {
@@ -541,7 +597,8 @@ impl ExportStatistics {
             }
         }
 
-        daily_readings.into_iter()
+        daily_readings
+            .into_iter()
             .map(|(date, (mgdl, mmol))| DailyStats::new(date, &mgdl, &mmol, thresholds))
             .collect()
     }
@@ -560,7 +617,8 @@ impl ExportStatistics {
             }
         }
 
-        hourly_data.into_iter()
+        hourly_data
+            .into_iter()
             .enumerate()
             .map(|(hour, (mgdl, mmol))| HourlyStats::new(hour as u8, mgdl, mmol))
             .collect()
@@ -576,21 +634,24 @@ impl ExportStatistics {
             ("Night", "9PM-12AM", 21, 24),
         ];
 
-        bins.iter().map(|(name, desc, start, end)| {
-            let filtered: Vec<_> = readings.iter()
-                .filter(|r| {
-                    if let Some(hour_str) = r.timestamp().get(11..13) {
-                        if let Ok(hour) = hour_str.parse::<u8>() {
-                            return hour >= *start && hour < *end;
+        bins.iter()
+            .map(|(name, desc, start, end)| {
+                let filtered: Vec<_> = readings
+                    .iter()
+                    .filter(|r| {
+                        if let Some(hour_str) = r.timestamp().get(11..13) {
+                            if let Ok(hour) = hour_str.parse::<u8>() {
+                                return hour >= *start && hour < *end;
+                            }
                         }
-                    }
-                    false
-                })
-                .collect();
-            let mgdl: Vec<u16> = filtered.iter().map(|r| r.mg_dl()).collect();
-            let mmol: Vec<f64> = filtered.iter().map(|r| r.mmol_l()).collect();
-            TimeBinStats::new(name, desc, *start, *end, mgdl, mmol)
-        }).collect()
+                        false
+                    })
+                    .collect();
+                let mgdl: Vec<u16> = filtered.iter().map(|r| r.mg_dl()).collect();
+                let mmol: Vec<f64> = filtered.iter().map(|r| r.mmol_l()).collect();
+                TimeBinStats::new(name, desc, *start, *end, mgdl, mmol)
+            })
+            .collect()
     }
 
     fn calculate_histogram(values: &[u16]) -> Vec<HistogramBin> {
@@ -606,7 +667,11 @@ impl ExportStatistics {
                 range_start: start,
                 range_end: end,
                 count,
-                percentage: if total > 0 { (count as f64 / total as f64) * 100.0 } else { 0.0 },
+                percentage: if total > 0 {
+                    (count as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                },
             });
             start = end;
         }
@@ -631,13 +696,13 @@ mod tests {
         let mgdl_values = vec![100, 120, 140, 160, 180];
         let mmol_values = vec![5.6, 6.7, 7.8, 8.9, 10.0];
         let stats = BasicStats::from_values(&mgdl_values, &mmol_values).unwrap();
-        
+
         // mg/dL stats
         assert_eq!(stats.mgdl.count, 5);
         assert!((stats.mgdl.mean - 140.0).abs() < 0.01);
         assert_eq!(stats.mgdl.min, 100);
         assert_eq!(stats.mgdl.max, 180);
-        
+
         // mmol/L stats
         assert_eq!(stats.mmol.count, 5);
         assert!((stats.mmol.mean - 7.8).abs() < 0.01);

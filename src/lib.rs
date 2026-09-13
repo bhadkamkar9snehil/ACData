@@ -8,4 +8,5 @@ pub mod export;
 pub mod protocol;
 pub mod stats;
 pub mod storage;
+pub mod sync;
 pub mod units;

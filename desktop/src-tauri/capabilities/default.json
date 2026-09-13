@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Only the core application window; no network or filesystem capability is exposed to React.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

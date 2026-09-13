@@ -8,9 +8,8 @@ use crate::config::{
     config_file_path, default_database_path, default_export_dir, ensure_data_dir, get_data_dir,
     Config,
 };
-use crate::device::find_and_download_accuchek;
 use crate::error::AccuChekError;
-use crate::storage::Storage;
+use crate::sync::sync_device;
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -26,24 +25,31 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    let mut args = args.into_iter();
-    let _program = args.next();
+    let args: Vec<String> = args
+        .into_iter()
+        .map(|argument| argument.as_ref().to_owned())
+        .collect();
+    let command_args = args.get(1..).unwrap_or_default();
 
-    match args.next().as_ref().map(AsRef::as_ref) {
-        None => Ok(Command::Guidance),
-        Some("sync" | "download") => parse_sync(args.next().as_ref().map(AsRef::as_ref)),
-        Some("--help" | "-h" | "help") => Ok(Command::Help),
-        Some("--version" | "-V") => Ok(Command::Version),
-        Some("path" | "paths") => Ok(Command::Paths),
-        Some(argument) => Err(format!("unknown command '{argument}'")),
+    match command_args {
+        [] => Ok(Command::Guidance),
+        [command] if matches!(command.as_str(), "sync" | "download") => Ok(Command::Sync(None)),
+        [command, device_index] if matches!(command.as_str(), "sync" | "download") => {
+            parse_device_index(device_index)
+        }
+        [command] if matches!(command.as_str(), "--help" | "-h" | "help") => Ok(Command::Help),
+        [command] if matches!(command.as_str(), "--version" | "-V") => Ok(Command::Version),
+        [command] if matches!(command.as_str(), "path" | "paths") => Ok(Command::Paths),
+        [command, trailing @ ..] if is_known_command(command) => Err(format!(
+            "unexpected argument{} after '{command}': {}",
+            if trailing.len() == 1 { "" } else { "s" },
+            trailing.join(" ")
+        )),
+        [command, ..] => Err(format!("unknown command '{command}'")),
     }
 }
 
-fn parse_sync(device_index: Option<&str>) -> Result<Command, String> {
-    let Some(device_index) = device_index else {
-        return Ok(Command::Sync(None));
-    };
-
+fn parse_device_index(device_index: &str) -> Result<Command, String> {
     device_index
         .parse()
         .map(|index| Command::Sync(Some(index)))
@@ -52,23 +58,33 @@ fn parse_sync(device_index: Option<&str>) -> Result<Command, String> {
         })
 }
 
+fn is_known_command(command: &str) -> bool {
+    matches!(
+        command,
+        "sync" | "download" | "--help" | "-h" | "help" | "--version" | "-V" | "path" | "paths"
+    )
+}
+
 /// Run the command-line application.
 pub fn run() -> Result<(), AccuChekError> {
     let args: Vec<String> = env::args().collect();
-    if args.len() > 1 {
-        attach_console();
-    }
-
-    let command = parse_args(&args).map_err(|message| {
-        AccuChekError::Communication(format!("CLI argument error: {message}"))
-    })?;
+    let command = parse_args(&args).map_err(AccuChekError::InvalidArguments)?;
     let debug_mode = env::var("ACCUCHEK_DBG").is_ok();
     initialize_logging(debug_mode);
-    let (config, db_path) = load_config(debug_mode);
 
+    execute_command(command, |device_index| {
+        let (config, db_path) = load_config(debug_mode);
+        cmd_sync(&config, &db_path, device_index)
+    })
+}
+
+fn execute_command<F>(command: Command, sync: F) -> Result<(), AccuChekError>
+where
+    F: FnOnce(Option<usize>) -> Result<(), AccuChekError>,
+{
     match command {
         Command::Guidance => print_desktop_guidance(),
-        Command::Sync(device_index) => cmd_sync(&config, &db_path, device_index)?,
+        Command::Sync(device_index) => return sync(device_index),
         Command::Help => print_help(),
         Command::Version => println!("accuchek {}", env!("CARGO_PKG_VERSION")),
         Command::Paths => cmd_show_paths(),
@@ -128,33 +144,19 @@ fn cmd_sync(
     db_path: &str,
     device_index: Option<usize>,
 ) -> Result<(), AccuChekError> {
-    #[cfg(unix)]
-    check_root_privileges()?;
-
     info!("Starting Accu-Chek downloader");
-    let context = rusb::Context::new()?;
-    let download = find_and_download_accuchek(&context, config, device_index)?;
-    let storage = Storage::new(db_path)?;
-    storage.upsert_device(&download.device)?;
-    let readings = download.readings;
-    let new_count = storage.import_readings(&readings)?;
-    let total_count = storage.count()?;
-
+    let summary = sync_device(config, db_path, device_index)?;
+    let downloaded_count = summary.readings.len();
     info!(
         "Imported {} new readings ({} from device, {} total in database)",
-        new_count,
-        readings.len(),
-        total_count
+        summary.imported_count, downloaded_count, summary.total_count
     );
-    eprintln!("Downloaded {} readings from device", readings.len());
-    eprintln!("  New entries:     {new_count}");
-    eprintln!(
-        "  Duplicates:      {} (skipped)",
-        readings.len() - new_count
-    );
-    eprintln!("  Total in DB:     {total_count}");
-    eprintln!("Saved to: {db_path}");
-    println!("{}", serde_json::to_string_pretty(&readings)?);
+    eprintln!("Downloaded {downloaded_count} readings from device");
+    eprintln!("  New entries:     {}", summary.imported_count);
+    eprintln!("  Duplicates:      {} (skipped)", summary.duplicate_count());
+    eprintln!("  Total in DB:     {}", summary.total_count);
+    eprintln!("Saved to: {}", summary.database_path);
+    println!("{}", serde_json::to_string_pretty(&summary.readings)?);
     eprintln!("Export complete!");
     Ok(())
 }
@@ -184,68 +186,31 @@ fn print_help() {
     eprintln!("  Config:    {}", config_file_path().display());
 }
 
-#[cfg(windows)]
-fn attach_console() {
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn AttachConsole(process_id: u32) -> i32;
-    }
-
-    #[link(name = "msvcrt")]
-    extern "C" {
-        fn freopen(
-            filename: *const i8,
-            mode: *const i8,
-            stream: *mut std::ffi::c_void,
-        ) -> *mut std::ffi::c_void;
-        fn __acrt_iob_func(index: u32) -> *mut std::ffi::c_void;
-    }
-
-    const ATTACH_PARENT_PROCESS: u32 = 0xFFFF_FFFF;
-
-    unsafe {
-        if AttachConsole(ATTACH_PARENT_PROCESS) != 0 {
-            let conout = c"CONOUT$".as_ptr();
-            let mode = c"w".as_ptr();
-            freopen(conout, mode, __acrt_iob_func(1));
-            freopen(conout, mode, __acrt_iob_func(2));
-        }
-    }
-}
-
-#[cfg(not(windows))]
-fn attach_console() {}
-
-#[cfg(unix)]
-fn check_root_privileges() -> Result<(), AccuChekError> {
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{parse_args, Command};
+    use std::cell::Cell;
+
+    use super::{execute_command, parse_args, Command};
 
     #[test]
-    fn parses_help() {
-        assert_eq!(parse_args(["accuchek", "--help"]), Ok(Command::Help));
-    }
+    fn parses_supported_commands_and_aliases() {
+        let cases = [
+            (vec!["accuchek"], Command::Guidance),
+            (vec!["accuchek", "--help"], Command::Help),
+            (vec!["accuchek", "-h"], Command::Help),
+            (vec!["accuchek", "help"], Command::Help),
+            (vec!["accuchek", "--version"], Command::Version),
+            (vec!["accuchek", "-V"], Command::Version),
+            (vec!["accuchek", "path"], Command::Paths),
+            (vec!["accuchek", "paths"], Command::Paths),
+            (vec!["accuchek", "sync"], Command::Sync(None)),
+            (vec!["accuchek", "download"], Command::Sync(None)),
+            (vec!["accuchek", "sync", "2"], Command::Sync(Some(2))),
+        ];
 
-    #[test]
-    fn parses_version() {
-        assert_eq!(parse_args(["accuchek", "--version"]), Ok(Command::Version));
-    }
-
-    #[test]
-    fn parses_paths() {
-        assert_eq!(parse_args(["accuchek", "paths"]), Ok(Command::Paths));
-    }
-
-    #[test]
-    fn dispatches_sync_with_device_index() {
-        assert_eq!(
-            parse_args(["accuchek", "sync", "2"]),
-            Ok(Command::Sync(Some(2)))
-        );
+        for (args, expected) in cases {
+            assert_eq!(parse_args(args), Ok(expected));
+        }
     }
 
     #[test]
@@ -254,5 +219,39 @@ mod tests {
             parse_args(["accuchek", "sync", "meter"]),
             Err("invalid device index 'meter': expected a non-negative integer".to_string())
         );
+    }
+
+    #[test]
+    fn rejects_trailing_arguments_for_every_command() {
+        let cases = [
+            vec!["accuchek", "--help", "extra"],
+            vec!["accuchek", "--version", "extra"],
+            vec!["accuchek", "paths", "extra"],
+            vec!["accuchek", "sync", "2", "extra"],
+        ];
+
+        for args in cases {
+            assert!(parse_args(args).is_err());
+        }
+    }
+
+    #[test]
+    fn non_sync_commands_do_not_initialize_sync_dependencies() {
+        for command in [
+            Command::Guidance,
+            Command::Help,
+            Command::Version,
+            Command::Paths,
+        ] {
+            let sync_invoked = Cell::new(false);
+
+            execute_command(command, |_| {
+                sync_invoked.set(true);
+                Ok(())
+            })
+            .unwrap();
+
+            assert!(!sync_invoked.get());
+        }
     }
 }

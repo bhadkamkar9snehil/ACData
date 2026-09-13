@@ -163,11 +163,11 @@ pub fn read_be32(buffer: &[u8], offset: usize) -> u32 {
 /// Hex dump a buffer for debugging
 pub fn hex_dump(buffer: &[u8]) {
     use log::info;
-    
+
     let mut i = 0;
     while i < buffer.len() {
         let end = std::cmp::min(i + 16, buffer.len());
-        
+
         // Build hex bytes string
         let mut hex_part = String::new();
         for j in i..i + 16 {
@@ -177,7 +177,7 @@ pub fn hex_dump(buffer: &[u8]) {
                 hex_part.push_str("   ");
             }
         }
-        
+
         // Build ASCII representation
         let mut ascii_part = String::new();
         for &c in buffer.iter().take(end).skip(i) {
@@ -187,7 +187,7 @@ pub fn hex_dump(buffer: &[u8]) {
                 ascii_part.push('.');
             }
         }
-        
+
         info!("{}   {}", hex_part, ascii_part);
         i += 16;
     }

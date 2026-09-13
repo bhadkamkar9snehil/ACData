@@ -142,7 +142,7 @@ impl Thresholds {
     /// Clinical constant: severe hypoglycemia threshold
     pub const VERY_LOW_MGDL: u16 = 54;
     pub const VERY_LOW_MMOL: f64 = 3.0;
-    
+
     /// Clinical constant: severe hyperglycemia threshold
     pub const VERY_HIGH_MGDL: u16 = 250;
     pub const VERY_HIGH_MMOL: f64 = 13.9;
@@ -244,7 +244,7 @@ mod tests {
         // Using device-provided values directly
         let mg_dl = 180;
         let mmol_l = 10.0;
-        
+
         assert_eq!(GlucoseUnit::MgDl.format(mg_dl, mmol_l), "180 mg/dL");
         assert_eq!(GlucoseUnit::MmolL.format(mg_dl, mmol_l), "10.0 mmol/L");
     }
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_thresholds_classification() {
         let thresholds = Thresholds::default();
-        
+
         assert_eq!(thresholds.classify(50), GlucoseRange::VeryLow);
         assert_eq!(thresholds.classify(60), GlucoseRange::Low);
         assert_eq!(thresholds.classify(100), GlucoseRange::InRange);
@@ -263,8 +263,11 @@ mod tests {
     #[test]
     fn test_thresholds_display() {
         let thresholds = Thresholds::default();
-        
+
         assert_eq!(thresholds.format_range(GlucoseUnit::MgDl), "70-180 mg/dL");
-        assert_eq!(thresholds.format_range(GlucoseUnit::MmolL), "3.9-10.0 mmol/L");
+        assert_eq!(
+            thresholds.format_range(GlucoseUnit::MmolL),
+            "3.9-10.0 mmol/L"
+        );
     }
 }
