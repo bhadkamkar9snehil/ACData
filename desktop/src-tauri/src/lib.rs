@@ -1,7 +1,7 @@
 use accuchek::config::{config_file_path, default_database_path, default_export_dir, Config};
 use accuchek::export::PdfExporter;
 use accuchek::stats::ExportStatistics;
-use accuchek::storage::Storage;
+use accuchek::storage::{InsulinDose, MealEvent, MedicationChange, Storage};
 use accuchek::sync::sync_device;
 use accuchek::units::{GlucoseUnit, Thresholds};
 use serde::Serialize;
@@ -14,6 +14,14 @@ struct ReadingDto {
     mg_dl: u16,
     status: u16,
     meal: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContextDto {
+    meals: Vec<MealEvent>,
+    medication_changes: Vec<MedicationChange>,
+    insulin_doses: Vec<InsulinDose>,
 }
 
 fn config() -> Config {
@@ -59,6 +67,30 @@ fn export_report() -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+fn get_context() -> Result<ContextDto, String> {
+    let storage = Storage::new(default_database_path()).map_err(|error| error.to_string())?;
+    Ok(ContextDto {
+        meals: storage.get_meal_events().map_err(|error| error.to_string())?,
+        medication_changes: storage.get_medication_changes().map_err(|error| error.to_string())?,
+        insulin_doses: storage.get_insulin_doses().map_err(|error| error.to_string())?,
+    })
+}
+
+#[tauri::command]
+fn add_medication_change(change: MedicationChange) -> Result<i64, String> {
+    Storage::new(default_database_path())
+        .and_then(|storage| storage.add_medication_change(&change))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn add_insulin_dose(dose: InsulinDose) -> Result<i64, String> {
+    Storage::new(default_database_path())
+        .and_then(|storage| storage.add_insulin_dose(&dose))
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -66,6 +98,7 @@ pub fn run() {
             get_readings,
             sync_meter,
             export_report
+            ,get_context, add_medication_change, add_insulin_dose
         ])
         .run(tauri::generate_context!())
         .expect("failed to run AccuChek Local");

@@ -9,7 +9,7 @@ use crate::config::{
     Config,
 };
 use crate::error::AccuChekError;
-use crate::sync::sync_device;
+use crate::{analysis::analyze, storage::Storage, sync::sync_device};
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -18,6 +18,8 @@ enum Command {
     Help,
     Version,
     Paths,
+    Data(String),
+    Analyze(String),
 }
 
 fn parse_args<I, S>(args: I) -> Result<Command, String>
@@ -40,6 +42,10 @@ where
         [command] if matches!(command.as_str(), "--help" | "-h" | "help") => Ok(Command::Help),
         [command] if matches!(command.as_str(), "--version" | "-V") => Ok(Command::Version),
         [command] if matches!(command.as_str(), "path" | "paths") => Ok(Command::Paths),
+        [command] if command == "data" => Ok(Command::Data("all".to_owned())),
+        [command, period] if command == "data" => Ok(Command::Data(period.to_owned())),
+        [command] if command == "analyze" => Ok(Command::Analyze("30d".to_owned())),
+        [command, period] if command == "analyze" => Ok(Command::Analyze(period.to_owned())),
         [command, trailing @ ..] if is_known_command(command) => Err(format!(
             "unexpected argument{} after '{command}': {}",
             if trailing.len() == 1 { "" } else { "s" },
@@ -61,7 +67,17 @@ fn parse_device_index(device_index: &str) -> Result<Command, String> {
 fn is_known_command(command: &str) -> bool {
     matches!(
         command,
-        "sync" | "download" | "--help" | "-h" | "help" | "--version" | "-V" | "path" | "paths"
+        "sync"
+            | "download"
+            | "--help"
+            | "-h"
+            | "help"
+            | "--version"
+            | "-V"
+            | "path"
+            | "paths"
+            | "data"
+            | "analyze"
     )
 }
 
@@ -71,6 +87,19 @@ pub fn run() -> Result<(), AccuChekError> {
     let command = parse_args(&args).map_err(AccuChekError::InvalidArguments)?;
     let debug_mode = env::var("ACCUCHEK_DBG").is_ok();
     initialize_logging(debug_mode);
+
+    if let Command::Data(period) | Command::Analyze(period) = &command {
+        let (_, db_path) = load_config(debug_mode);
+        let storage = Storage::new(db_path)?;
+        let readings = filter_period(storage.get_all_readings()?, period)?;
+        let value = if matches!(command, Command::Data(_)) {
+            serde_json::json!({ "schema_version": "1.0", "period": period, "readings": readings })
+        } else {
+            serde_json::to_value(analyze(&readings))?
+        };
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        return Ok(());
+    }
 
     execute_command(command, |device_index| {
         let (config, db_path) = load_config(debug_mode);
@@ -88,6 +117,7 @@ where
         Command::Help => print_help(),
         Command::Version => println!("accuchek {}", env!("CARGO_PKG_VERSION")),
         Command::Paths => cmd_show_paths(),
+        Command::Data(_) | Command::Analyze(_) => unreachable!("handled before execution"),
     }
 
     Ok(())
@@ -139,6 +169,40 @@ fn cmd_show_paths() {
     println!("  Export default:  {}", default_export_dir().display());
 }
 
+fn filter_period(
+    readings: Vec<crate::storage::StoredReading>,
+    period: &str,
+) -> Result<Vec<crate::storage::StoredReading>, AccuChekError> {
+    use chrono::{Duration, Local, NaiveDate};
+    let today = Local::now().date_naive();
+    let start: Option<NaiveDate> = match period {
+        "all" => None,
+        "yesterday" => Some(today - Duration::days(1)),
+        "last-week" | "7d" => Some(today - Duration::days(7)),
+        "30d" => Some(today - Duration::days(30)),
+        value => Some(NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+            AccuChekError::InvalidArguments(format!(
+                "invalid period '{value}': use yesterday, last-week, 30d, all, or YYYY-MM-DD"
+            ))
+        })?),
+    };
+    Ok(readings
+        .into_iter()
+        .filter(|reading| {
+            let date = reading
+                .timestamp
+                .get(0..10)
+                .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok());
+            match (period, start, date) {
+                ("yesterday", Some(day), Some(date)) => date == day,
+                (_, Some(day), Some(date)) => date >= day && date <= today,
+                (_, None, _) => true,
+                _ => false,
+            }
+        })
+        .collect())
+}
+
 fn cmd_sync(
     config: &Config,
     db_path: &str,
@@ -176,6 +240,8 @@ fn print_help() {
     eprintln!("  accuchek                    Show desktop application guidance");
     eprintln!("  accuchek sync [device_idx]  Download from device (CLI mode)");
     eprintln!("  accuchek path               Show data file locations");
+    eprintln!("  accuchek data [period]      Export stable JSON readings");
+    eprintln!("  accuchek analyze [period]   Export pattern analysis JSON");
     eprintln!("  accuchek help               Show this help");
     eprintln!();
     eprintln!("ENVIRONMENT:");

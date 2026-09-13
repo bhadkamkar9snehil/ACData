@@ -18,7 +18,7 @@ impl Storage {
         )?;
 
         if table_exists == 0 {
-            Self::create_v2_schema(conn)?;
+            Self::create_v3_schema(conn)?;
             return Ok(());
         }
 
@@ -115,6 +115,7 @@ impl Storage {
             )?;
         }
 
+        Self::migrate_to_v3(conn)?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if version != SCHEMA_VERSION {
             return Err(rusqlite::Error::InvalidQuery);
@@ -122,7 +123,7 @@ impl Storage {
         Ok(())
     }
 
-    fn create_v2_schema(conn: &Connection) -> Result<()> {
+    fn create_v3_schema(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             "CREATE TABLE readings (
                 id INTEGER PRIMARY KEY,
@@ -138,6 +139,9 @@ impl Storage {
                 note TEXT,
                 tags TEXT,
                 imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                meal_context TEXT,
+                meal_event_id INTEGER REFERENCES meal_events(id),
+                quality_note TEXT,
                 UNIQUE(device_key, timestamp, raw_value, status, occurrence)
              );
              CREATE INDEX idx_readings_epoch ON readings(epoch);
@@ -160,7 +164,59 @@ impl Storage {
                 first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
              );
-             PRAGMA user_version = 2;",
+             CREATE TABLE meal_events (
+                id INTEGER PRIMARY KEY, occurred_at TEXT NOT NULL, meal_type TEXT NOT NULL,
+                description TEXT, carbs_grams REAL, notes TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );
+             CREATE TABLE medication_changes (
+                id INTEGER PRIMARY KEY, effective_at TEXT NOT NULL, medication_name TEXT NOT NULL,
+                previous_dose REAL, new_dose REAL, dose_unit TEXT, frequency TEXT,
+                reason TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );
+             CREATE TABLE insulin_doses (
+                id INTEGER PRIMARY KEY, taken_at TEXT NOT NULL, insulin_name TEXT NOT NULL,
+                insulin_type TEXT NOT NULL, units REAL NOT NULL CHECK(units > 0),
+                meal_event_id INTEGER REFERENCES meal_events(id), notes TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );
+             CREATE INDEX idx_meal_events_time ON meal_events(occurred_at);
+             CREATE INDEX idx_medication_changes_time ON medication_changes(effective_at);
+             CREATE INDEX idx_insulin_doses_time ON insulin_doses(taken_at);
+             PRAGMA user_version = 3;",
+        )?;
+        Ok(())
+    }
+
+    fn migrate_to_v3(conn: &Connection) -> Result<()> {
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version >= 3 {
+            return Ok(());
+        }
+        conn.execute_batch(
+            "BEGIN IMMEDIATE;
+             CREATE TABLE IF NOT EXISTS meal_events (
+                id INTEGER PRIMARY KEY, occurred_at TEXT NOT NULL, meal_type TEXT NOT NULL,
+                description TEXT, carbs_grams REAL, notes TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );
+             CREATE TABLE IF NOT EXISTS medication_changes (
+                id INTEGER PRIMARY KEY, effective_at TEXT NOT NULL, medication_name TEXT NOT NULL,
+                previous_dose REAL, new_dose REAL, dose_unit TEXT, frequency TEXT,
+                reason TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );
+             CREATE TABLE IF NOT EXISTS insulin_doses (
+                id INTEGER PRIMARY KEY, taken_at TEXT NOT NULL, insulin_name TEXT NOT NULL,
+                insulin_type TEXT NOT NULL, units REAL NOT NULL CHECK(units > 0),
+                meal_event_id INTEGER REFERENCES meal_events(id), notes TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );
+             ALTER TABLE readings ADD COLUMN meal_context TEXT;
+             ALTER TABLE readings ADD COLUMN meal_event_id INTEGER REFERENCES meal_events(id);
+             ALTER TABLE readings ADD COLUMN quality_note TEXT;
+             CREATE INDEX IF NOT EXISTS idx_meal_events_time ON meal_events(occurred_at);
+             CREATE INDEX IF NOT EXISTS idx_medication_changes_time ON medication_changes(effective_at);
+             CREATE INDEX IF NOT EXISTS idx_insulin_doses_time ON insulin_doses(taken_at);
+             PRAGMA user_version = 3;
+             COMMIT;",
         )?;
         Ok(())
     }

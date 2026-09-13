@@ -16,7 +16,41 @@ use crate::stats::{
 };
 use crate::units::Thresholds;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MealEvent {
+    pub id: i64,
+    pub occurred_at: String,
+    pub meal_type: String,
+    pub description: Option<String>,
+    pub carbs_grams: Option<f64>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MedicationChange {
+    pub id: i64,
+    pub effective_at: String,
+    pub medication_name: String,
+    pub previous_dose: Option<f64>,
+    pub new_dose: Option<f64>,
+    pub dose_unit: Option<String>,
+    pub frequency: Option<String>,
+    pub reason: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsulinDose {
+    pub id: i64,
+    pub taken_at: String,
+    pub insulin_name: String,
+    pub insulin_type: String,
+    pub units: f64,
+    pub meal_event_id: Option<i64>,
+    pub notes: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredReading {
@@ -35,6 +69,9 @@ pub struct StoredReading {
     pub note: Option<String>,
     pub tags: Option<String>,
     pub imported_at: String,
+    pub meal_context: Option<String>,
+    pub meal_event_id: Option<i64>,
+    pub quality_note: Option<String>,
 }
 
 impl ReadingData for StoredReading {

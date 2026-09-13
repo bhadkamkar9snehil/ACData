@@ -1,5 +1,6 @@
 //! Reusable Accu-Chek protocol, storage, and reporting backend.
 
+pub mod analysis;
 pub mod cli;
 pub mod config;
 pub mod device;

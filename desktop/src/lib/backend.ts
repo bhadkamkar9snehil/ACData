@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Reading } from "./types";
+import type {
+  ContextData,
+  InsulinDose,
+  MedicationChange,
+  Reading,
+} from "./types";
 
 export const inDesktop = () => "__TAURI_INTERNALS__" in window;
 
@@ -8,11 +13,35 @@ export async function loadReadings(): Promise<Reading[]> {
 }
 
 export async function syncMeter(): Promise<number> {
-  if (!inDesktop()) throw new Error("Open the packaged desktop app to read the meter.");
+  if (!inDesktop())
+    throw new Error("Open the packaged desktop app to read the meter.");
   return invoke<number>("sync_meter");
 }
 
 export async function exportReport(): Promise<string> {
-  if (!inDesktop()) { window.print(); return "Print dialog opened"; }
+  if (!inDesktop()) {
+    window.print();
+    return "Print dialog opened";
+  }
   return invoke<string>("export_report");
+}
+
+export async function loadContext(): Promise<ContextData> {
+  return inDesktop()
+    ? invoke<ContextData>("get_context")
+    : { meals: [], medicationChanges: [], insulinDoses: [] };
+}
+
+export async function saveMedication(
+  change: Omit<MedicationChange, "id">,
+): Promise<number> {
+  return invoke<number>("add_medication_change", {
+    change: { id: 0, ...change },
+  });
+}
+
+export async function saveInsulin(
+  dose: Omit<InsulinDose, "id">,
+): Promise<number> {
+  return invoke<number>("add_insulin_dose", { dose: { id: 0, ...dose } });
 }

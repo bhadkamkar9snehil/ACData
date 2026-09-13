@@ -100,7 +100,8 @@ impl Storage {
     pub fn get_all_readings(&self) -> Result<Vec<StoredReading>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, epoch, timestamp, mg_dl, mmol_l, raw_value, status, range_state,
-                    device_key, occurrence, note, tags, imported_at
+                    device_key, occurrence, note, tags, imported_at,
+                    meal_context, meal_event_id, quality_note
              FROM readings ORDER BY epoch, id",
         )?;
         let readings = stmt
@@ -301,6 +302,61 @@ impl Storage {
             note: row.get(10)?,
             tags: row.get(11)?,
             imported_at: row.get(12)?,
+            meal_context: row.get(13)?,
+            meal_event_id: row.get(14)?,
+            quality_note: row.get(15)?,
         })
+    }
+
+    pub fn add_meal_event(&self, event: &MealEvent) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO meal_events (occurred_at, meal_type, description, carbs_grams, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![event.occurred_at, event.meal_type, event.description, event.carbs_grams, event.notes],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn add_medication_change(&self, change: &MedicationChange) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO medication_changes (effective_at, medication_name, previous_dose, new_dose, dose_unit, frequency, reason, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![change.effective_at, change.medication_name, change.previous_dose, change.new_dose, change.dose_unit, change.frequency, change.reason, change.notes],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn add_insulin_dose(&self, dose: &InsulinDose) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO insulin_doses (taken_at, insulin_name, insulin_type, units, meal_event_id, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![dose.taken_at, dose.insulin_name, dose.insulin_type, dose.units, dose.meal_event_id, dose.notes],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn set_reading_context(&self, id: i64, context: Option<&str>, meal_event_id: Option<i64>) -> Result<usize> {
+        self.conn.execute(
+            "UPDATE readings SET meal_context=?1, meal_event_id=?2 WHERE id=?3",
+            params![context, meal_event_id, id],
+        )
+    }
+
+    pub fn get_meal_events(&self) -> Result<Vec<MealEvent>> {
+        let mut stmt = self.conn.prepare("SELECT id, occurred_at, meal_type, description, carbs_grams, notes FROM meal_events ORDER BY occurred_at DESC")?;
+        let rows = stmt.query_map([], |row| Ok(MealEvent { id: row.get(0)?, occurred_at: row.get(1)?, meal_type: row.get(2)?, description: row.get(3)?, carbs_grams: row.get(4)?, notes: row.get(5)? }))?.collect();
+        rows
+    }
+
+    pub fn get_medication_changes(&self) -> Result<Vec<MedicationChange>> {
+        let mut stmt = self.conn.prepare("SELECT id, effective_at, medication_name, previous_dose, new_dose, dose_unit, frequency, reason, notes FROM medication_changes ORDER BY effective_at DESC")?;
+        let rows = stmt.query_map([], |row| Ok(MedicationChange { id: row.get(0)?, effective_at: row.get(1)?, medication_name: row.get(2)?, previous_dose: row.get(3)?, new_dose: row.get(4)?, dose_unit: row.get(5)?, frequency: row.get(6)?, reason: row.get(7)?, notes: row.get(8)? }))?.collect();
+        rows
+    }
+
+    pub fn get_insulin_doses(&self) -> Result<Vec<InsulinDose>> {
+        let mut stmt = self.conn.prepare("SELECT id, taken_at, insulin_name, insulin_type, units, meal_event_id, notes FROM insulin_doses ORDER BY taken_at DESC")?;
+        let rows = stmt.query_map([], |row| Ok(InsulinDose { id: row.get(0)?, taken_at: row.get(1)?, insulin_name: row.get(2)?, insulin_type: row.get(3)?, units: row.get(4)?, meal_event_id: row.get(5)?, notes: row.get(6)? }))?.collect();
+        rows
     }
 }
