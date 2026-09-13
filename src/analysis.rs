@@ -59,6 +59,7 @@ pub fn analyze(readings: &[StoredReading]) -> AnalysisReport {
         reading
             .meal_context
             .clone()
+            .or_else(|| reading.tags.clone())
             .unwrap_or_else(|| "Unclassified".to_owned())
     });
     AnalysisReport {
@@ -281,5 +282,31 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].direction, "higher");
         assert!(changes[0].difference_mg_dl > 35.0);
+    }
+
+    #[test]
+    fn legacy_tags_remain_available_as_meal_context() {
+        let mut row = StoredReading {
+            id: 1,
+            epoch: 1,
+            timestamp: "2026-09-01 08:00:00".to_owned(),
+            mg_dl: 100,
+            mmol_l: 5.6,
+            raw_value: 100,
+            status: 0,
+            range_state: "normal".to_owned(),
+            device_key: "test".to_owned(),
+            occurrence: 0,
+            note: None,
+            tags: Some("Fasting".to_owned()),
+            imported_at: "2026-09-01".to_owned(),
+            meal_context: None,
+            meal_event_id: None,
+            quality_note: None,
+        };
+        let report = super::analyze(std::slice::from_ref(&row));
+        assert_eq!(report.meal_context[0].label, "Fasting");
+        row.tags = None;
+        assert_eq!(super::analyze(&[row]).meal_context[0].label, "Unclassified");
     }
 }

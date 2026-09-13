@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+use crate::analysis::analyze;
 use crate::stats::ExportStatistics;
 use crate::storage::StoredReading;
 use crate::units::{GlucoseRange, GlucoseUnit, Thresholds};
@@ -308,6 +309,11 @@ pub struct PdfExporter<'a> {
     unit: GlucoseUnit,
 }
 
+struct ClinicalHeadline {
+    safety: String,
+    range: String,
+}
+
 impl<'a> PdfExporter<'a> {
     pub fn new(
         readings: &'a [StoredReading],
@@ -320,6 +326,26 @@ impl<'a> PdfExporter<'a> {
             stats,
             thresholds,
             unit,
+        }
+    }
+
+    fn clinical_headline(&self) -> ClinicalHeadline {
+        let low = self.stats.tir.total_low();
+        let high = self.stats.tir.total_high();
+        ClinicalHeadline {
+            safety: format!(
+                "{} low sample{} | {} high sample{}",
+                low,
+                if low == 1 { "" } else { "s" },
+                high,
+                if high == 1 { "" } else { "s" }
+            ),
+            range: format!(
+                "{:.1}% of sampled readings in {}-{} mg/dL",
+                self.stats.tir.in_range_percent(),
+                self.thresholds.low_mgdl,
+                self.thresholds.high_mgdl
+            ),
         }
     }
 
@@ -373,6 +399,7 @@ impl<'a> PdfExporter<'a> {
             self.build_time_bins_page(),
             self.build_daily_tir_page(),
             self.build_chart_page(),
+            self.build_patterns_page(),
         ];
 
         // Add data pages
@@ -405,8 +432,8 @@ impl<'a> PdfExporter<'a> {
 
         // Title
         ops.extend(PdfOps::text(
-            "Accu-Chek Glucose Report",
-            24.0,
+            "Glucose review for clinical discussion",
+            22.0,
             MARGIN_MM,
             y,
             BuiltinFont::HelveticaBold,
@@ -424,7 +451,41 @@ impl<'a> PdfExporter<'a> {
             BuiltinFont::Helvetica,
             PdfColors::gray(),
         ));
-        y -= 15.0;
+        y -= 10.0;
+
+        let headline = self.clinical_headline();
+        ops.extend(PdfOps::rect_fill(
+            MARGIN_MM,
+            y - 21.0,
+            PAGE_WIDTH_MM - 2.0 * MARGIN_MM,
+            24.0,
+            PdfColors::light_gray(),
+        ));
+        ops.extend(PdfOps::text(
+            "Review first",
+            9.0,
+            MARGIN_MM + 5.0,
+            y - 3.0,
+            BuiltinFont::HelveticaBold,
+            PdfColors::gray(),
+        ));
+        ops.extend(PdfOps::text(
+            &headline.safety,
+            13.0,
+            MARGIN_MM + 5.0,
+            y - 10.0,
+            BuiltinFont::HelveticaBold,
+            PdfColors::red(),
+        ));
+        ops.extend(PdfOps::text(
+            &headline.range,
+            9.0,
+            MARGIN_MM + 5.0,
+            y - 16.0,
+            BuiltinFont::Helvetica,
+            PdfColors::black(),
+        ));
+        y -= 31.0;
 
         ops.extend(PdfOps::line(
             MARGIN_MM,
@@ -438,7 +499,7 @@ impl<'a> PdfExporter<'a> {
 
         // Summary Statistics
         ops.extend(PdfOps::text(
-            "Summary Statistics",
+            "At a glance",
             14.0,
             MARGIN_MM,
             y,
@@ -494,6 +555,19 @@ impl<'a> PdfExporter<'a> {
 
             ops.extend(PdfOps::text(
                 &format!(
+                    "Median: {} mg/dL | IQR: {}-{} mg/dL | SD: {:.1} mg/dL",
+                    stats.mgdl.median, stats.mgdl.q1, stats.mgdl.q3, stats.mgdl.std_dev
+                ),
+                11.0,
+                MARGIN_MM + 5.0,
+                y,
+                BuiltinFont::Helvetica,
+                PdfColors::black(),
+            ));
+            y -= 7.0;
+
+            ops.extend(PdfOps::text(
+                &format!(
                     "Minimum: {} mg/dL ({:.1} mmol/L)",
                     stats.mgdl.min, stats.mmol.min
                 ),
@@ -519,14 +593,14 @@ impl<'a> PdfExporter<'a> {
             y -= 15.0;
         }
 
-        // Time in Range section
+        // Sampled range composition section
         let range_label = match self.unit {
             GlucoseUnit::MgDl => format!(
-                "Time in Range ({}-{} mg/dL)",
+                "Sampled readings by range ({}-{} mg/dL target)",
                 self.thresholds.low_mgdl, self.thresholds.high_mgdl
             ),
             GlucoseUnit::MmolL => format!(
-                "Time in Range ({:.1}-{:.1} mmol/L)",
+                "Sampled readings by range ({:.1}-{:.1} mmol/L target)",
                 self.thresholds.low_mmol, self.thresholds.high_mmol
             ),
         };
@@ -1842,6 +1916,200 @@ impl<'a> PdfExporter<'a> {
         PdfPage::new(Mm(PAGE_WIDTH_MM), Mm(PAGE_HEIGHT_MM), ops)
     }
 
+    fn build_patterns_page(&self) -> PdfPage {
+        let report = analyze(self.readings);
+        let mut ops = Vec::new();
+        let mut y = PAGE_HEIGHT_MM - MARGIN_MM;
+        ops.extend(PdfOps::text(
+            "Patterns and context",
+            20.0,
+            MARGIN_MM,
+            y,
+            BuiltinFont::HelveticaBold,
+            PdfColors::black(),
+        ));
+        y -= 9.0;
+        ops.extend(PdfOps::text(
+            "Comparisons use meter-local time. Small sample counts require caution.",
+            9.0,
+            MARGIN_MM,
+            y,
+            BuiltinFont::Helvetica,
+            PdfColors::gray(),
+        ));
+        y -= 15.0;
+
+        ops.extend(PdfOps::text(
+            "Detected level changes",
+            13.0,
+            MARGIN_MM,
+            y,
+            BuiltinFont::HelveticaBold,
+            PdfColors::black(),
+        ));
+        y -= 8.0;
+        if let Some(change) = report.trend_changes.first() {
+            ops.extend(PdfOps::text(
+                &format!(
+                    "Sustained shift {} by {:.1} mg/dL near {}",
+                    change.direction,
+                    change.difference_mg_dl.abs(),
+                    change.changed_at
+                ),
+                10.0,
+                MARGIN_MM + 4.0,
+                y,
+                BuiltinFont::HelveticaBold,
+                PdfColors::orange(),
+            ));
+            y -= 6.0;
+            ops.extend(PdfOps::text(
+                &format!(
+                    "Before: {:.1} mg/dL (n={}) | After: {:.1} mg/dL (n={})",
+                    change.before_average_mg_dl,
+                    change.before_count,
+                    change.after_average_mg_dl,
+                    change.after_count
+                ),
+                9.0,
+                MARGIN_MM + 4.0,
+                y,
+                BuiltinFont::Helvetica,
+                PdfColors::black(),
+            ));
+        } else {
+            ops.extend(PdfOps::text(
+                "No sustained shift met the current evidence threshold.",
+                9.0,
+                MARGIN_MM + 4.0,
+                y,
+                BuiltinFont::Helvetica,
+                PdfColors::gray(),
+            ));
+        }
+        y -= 15.0;
+
+        y = self.draw_category_table(&mut ops, "Time of day", &report.time_of_day, y);
+        y -= 10.0;
+        y = self.draw_category_table(&mut ops, "Meal context", &report.meal_context, y);
+        y -= 10.0;
+
+        ops.extend(PdfOps::text(
+            "Statistically unusual readings",
+            13.0,
+            MARGIN_MM,
+            y,
+            BuiltinFont::HelveticaBold,
+            PdfColors::black(),
+        ));
+        y -= 8.0;
+        if report.statistical_outliers.is_empty() {
+            ops.extend(PdfOps::text(
+                "None met the robust outlier threshold. All readings remain included.",
+                9.0,
+                MARGIN_MM + 4.0,
+                y,
+                BuiltinFont::Helvetica,
+                PdfColors::gray(),
+            ));
+        } else {
+            for finding in report.statistical_outliers.iter().take(5) {
+                ops.extend(PdfOps::text(
+                    &format!(
+                        "{} | {} mg/dL | {}",
+                        finding.timestamp, finding.mg_dl, finding.context
+                    ),
+                    9.0,
+                    MARGIN_MM + 4.0,
+                    y,
+                    BuiltinFont::Helvetica,
+                    PdfColors::red(),
+                ));
+                y -= 6.0;
+            }
+        }
+        ops.extend(PdfOps::text("Associations are not proof of a meal or treatment effect. No dose advice is generated.", 8.0, MARGIN_MM, MARGIN_MM + 6.0, BuiltinFont::Helvetica, PdfColors::gray()));
+        ops.extend(PdfOps::text(
+            "Page 7 - Patterns",
+            8.0,
+            MARGIN_MM,
+            MARGIN_MM,
+            BuiltinFont::Helvetica,
+            PdfColors::gray(),
+        ));
+        PdfPage::new(Mm(PAGE_WIDTH_MM), Mm(PAGE_HEIGHT_MM), ops)
+    }
+
+    fn draw_category_table(
+        &self,
+        ops: &mut Vec<Op>,
+        title: &str,
+        rows: &[crate::analysis::BucketSummary],
+        mut y: f32,
+    ) -> f32 {
+        ops.extend(PdfOps::text(
+            title,
+            13.0,
+            MARGIN_MM,
+            y,
+            BuiltinFont::HelveticaBold,
+            PdfColors::black(),
+        ));
+        y -= 7.0;
+        for (label, x) in [
+            ("Category", MARGIN_MM + 4.0),
+            ("Average", 82.0),
+            ("Median", 108.0),
+            ("SD", 133.0),
+            ("In range", 151.0),
+            ("n", 184.0),
+        ] {
+            ops.extend(PdfOps::text(
+                label,
+                8.0,
+                x,
+                y,
+                BuiltinFont::HelveticaBold,
+                PdfColors::gray(),
+            ));
+        }
+        y -= 6.0;
+        for row in rows.iter().take(9) {
+            let cells = [
+                (row.label.clone(), MARGIN_MM + 4.0),
+                (
+                    format!("{:.1}", row.average_mg_dl.unwrap_or_default()),
+                    82.0,
+                ),
+                (
+                    format!("{:.1}", row.median_mg_dl.unwrap_or_default()),
+                    108.0,
+                ),
+                (
+                    format!("{:.1}", row.standard_deviation_mg_dl.unwrap_or_default()),
+                    133.0,
+                ),
+                (
+                    format!("{:.0}%", row.sampled_in_range_percent.unwrap_or_default()),
+                    151.0,
+                ),
+                (row.count.to_string(), 184.0),
+            ];
+            for (value, x) in cells {
+                ops.extend(PdfOps::text(
+                    &value,
+                    8.5,
+                    x,
+                    y,
+                    BuiltinFont::Helvetica,
+                    PdfColors::black(),
+                ));
+            }
+            y -= 6.0;
+        }
+        y
+    }
+
     fn build_data_page(
         &self,
         readings: &[StoredReading],
@@ -2040,7 +2308,7 @@ impl<'a> PdfExporter<'a> {
         }
 
         ops.extend(PdfOps::text(
-            &format!("Page {} of {} - Data", page_num + 6, total_pages + 6),
+            &format!("Page {} of {} - Data", page_num + 7, total_pages + 7),
             8.0,
             MARGIN_MM,
             MARGIN_MM,
@@ -2049,5 +2317,43 @@ impl<'a> PdfExporter<'a> {
         ));
 
         PdfPage::new(Mm(PAGE_WIDTH_MM), Mm(PAGE_HEIGHT_MM), ops)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reading(id: i64, value: u16) -> StoredReading {
+        StoredReading {
+            id,
+            epoch: id,
+            timestamp: format!("2026-09-{id:02} 08:00:00"),
+            mg_dl: value,
+            mmol_l: f64::from(value) / 18.0,
+            raw_value: value,
+            status: 0,
+            range_state: "normal".to_owned(),
+            device_key: "test".to_owned(),
+            occurrence: 0,
+            note: None,
+            tags: Some("Fasting".to_owned()),
+            imported_at: "2026-09-13".to_owned(),
+            meal_context: Some("Fasting".to_owned()),
+            meal_event_id: None,
+            quality_note: None,
+        }
+    }
+
+    #[test]
+    fn clinical_headline_uses_sample_language_and_safety_counts() {
+        let readings = vec![reading(1, 60), reading(2, 100), reading(3, 210)];
+        let thresholds = Thresholds::default();
+        let stats = ExportStatistics::generate(&readings, thresholds);
+        let headline =
+            PdfExporter::new(&readings, &stats, thresholds, GlucoseUnit::MgDl).clinical_headline();
+        assert_eq!(headline.safety, "1 low sample | 1 high sample");
+        assert!(headline.range.contains("sampled readings"));
+        assert!(!headline.range.contains("Time in Range"));
     }
 }
