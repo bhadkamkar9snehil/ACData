@@ -1,85 +1,180 @@
-import { FileDown } from "lucide-react";
+import { Check, FileDown } from "lucide-react";
+import { useState } from "react";
 import { Button } from "../components/Button";
-import { summarize } from "../lib/analytics";
-import type { Reading } from "../lib/types";
+import { filterByDays, summarize } from "../lib/analytics";
 import { exportReport } from "../lib/backend";
+import type { Reading } from "../lib/types";
 
 export function Reports({ readings }: { readings: Reading[] }) {
-  const stats = summarize(readings);
+  const [period, setPeriod] = useState<28 | 90 | "all">(28);
+  const [unit, setUnit] = useState<"mg" | "mmol">("mg");
+  const [status, setStatus] = useState<"idle" | "working" | "done" | "error">(
+    "idle",
+  );
+  const [message, setMessage] = useState("");
+  const visible = filterByDays(readings, period);
+  const stats = summarize(visible);
   const sampledRange = stats.total
     ? Math.round((stats.counts.range / stats.total) * 100)
     : 0;
+
+  const save = async () => {
+    setStatus("working");
+    try {
+      const path = await exportReport(period === "all" ? null : period, unit);
+      setMessage(path);
+      setStatus("done");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setStatus("error");
+    }
+  };
+
   return (
     <>
       <header className="page-header">
         <div>
           <h1>Doctor report</h1>
           <p>
-            Safety signals and treatment context first; source readings remain
-            available.
+            A concise clinical summary followed by patterns, charts and
+            auditable source readings.
           </p>
         </div>
       </header>
       <div className="report-grid">
-        <section className="panel form">
+        <section className="panel form report-controls">
+          <h2>Prepare report</h2>
           <label>
             Date range
-            <select defaultValue="28">
+            <select
+              value={period}
+              onChange={(event) =>
+                setPeriod(
+                  event.target.value === "all"
+                    ? "all"
+                    : (Number(event.target.value) as 28 | 90),
+                )
+              }
+            >
               <option value="28">Last 28 days</option>
+              <option value="90">Last 90 days</option>
               <option value="all">All readings</option>
             </select>
           </label>
           <label>
             Display unit
-            <select defaultValue="mg">
+            <select
+              value={unit}
+              onChange={(event) => setUnit(event.target.value as "mg" | "mmol")}
+            >
               <option value="mg">mg/dL</option>
               <option value="mmol">mmol/L</option>
             </select>
           </label>
-          <label className="check">
-            <input type="checkbox" defaultChecked /> Treatment timeline
-          </label>
-          <label className="check">
-            <input type="checkbox" defaultChecked /> Meal comparisons and notes
-          </label>
-          <label className="check">
-            <input type="checkbox" defaultChecked /> Source-reading appendix
-          </label>
+          <div className="report-contents">
+            <b>Included automatically</b>
+            <span>
+              <Check /> Safety signals and sampled range
+            </span>
+            <span>
+              <Check /> Time-of-day and meal categories
+            </span>
+            <span>
+              <Check /> Trend changes and unusual readings
+            </span>
+            <span>
+              <Check /> Daily and hourly charts
+            </span>
+            <span>
+              <Check /> Source-reading appendix
+            </span>
+          </div>
           <Button
             icon={<FileDown size={17} />}
-            onClick={() => void exportReport()}
+            disabled={status === "working" || !stats.total}
+            onClick={() => void save()}
           >
-            Export private PDF
+            {status === "working" ? "Building report…" : "Export private PDF"}
           </Button>
+          {status !== "idle" && status !== "working" && (
+            <p
+              role="status"
+              className={`export-status export-status--${status}`}
+            >
+              {status === "done"
+                ? "Report saved locally: "
+                : "Could not create report: "}
+              {message}
+            </p>
+          )}
         </section>
-        <section className="report-preview">
-          <p className="report-kicker">CLINICIAN SUMMARY · INTERMITTENT BGM</p>
-          <h2>Glucose review</h2>
-          <p>Last 28 days · {stats.total} finger-stick samples</p>
-          <div className="report-alert">
-            <span>Review first</span>
-            <b>
-              {stats.counts.low} low · {stats.counts.high} high samples
-            </b>
-          </div>
-          <div>
-            <span>Median</span>
-            <b>{stats.median} mg/dL</b>
-          </div>
-          <div>
-            <span>Sampled in range</span>
-            <b>{sampledRange}%</b>
-          </div>
-          <div>
-            <span>Variability</span>
-            <b>{Math.round(stats.deviation)} mg/dL SD</b>
-          </div>
-          <small>
-            Spot samples do not represent continuous time in range. Generated
-            locally.
-          </small>
-        </section>
+        <ReportPreview
+          stats={stats}
+          sampledRange={sampledRange}
+          period={period}
+        />
       </div>
     </>
+  );
+}
+
+function ReportPreview({
+  stats,
+  sampledRange,
+  period,
+}: {
+  stats: ReturnType<typeof summarize>;
+  sampledRange: number;
+  period: 28 | 90 | "all";
+}) {
+  return (
+    <section className="report-preview">
+      <div className="report-preview-heading">
+        <div>
+          <h2>Glucose review</h2>
+          <p>
+            {period === "all" ? "All available data" : `Last ${period} days`} ·{" "}
+            {stats.total} finger-stick samples
+          </p>
+        </div>
+        <span>Clinical discussion</span>
+      </div>
+      <div className="report-alert">
+        <span>Review first</span>
+        <b>
+          {stats.counts.low} low · {stats.counts.high} high samples
+        </b>
+      </div>
+      <div className="report-stat-grid">
+        <div>
+          <span>Median</span>
+          <b>{stats.median}</b>
+          <small>mg/dL</small>
+        </div>
+        <div>
+          <span>Sampled in range</span>
+          <b>{sampledRange}%</b>
+          <small>70–180 mg/dL</small>
+        </div>
+        <div>
+          <span>Variability</span>
+          <b>{Math.round(stats.deviation)}</b>
+          <small>mg/dL sample SD</small>
+        </div>
+      </div>
+      <div className="report-outline">
+        <b>Report sequence</b>
+        <ol>
+          <li>Urgent signals and core statistics</li>
+          <li>Distribution and time-of-day patterns</li>
+          <li>Detected level changes and context</li>
+          <li>Source readings with annotations</li>
+        </ol>
+      </div>
+      <small className="report-footnote">
+        Spot samples do not represent continuous time in range. The report
+        provides no dosing advice.
+      </small>
+    </section>
   );
 }

@@ -1,4 +1,5 @@
 use accuchek::config::{config_file_path, default_database_path, default_export_dir, Config};
+use accuchek::analysis::filter_recent;
 use accuchek::export::PdfExporter;
 use accuchek::stats::ExportStatistics;
 use accuchek::storage::{InsulinDose, MealEvent, MedicationChange, Storage};
@@ -55,15 +56,16 @@ fn sync_meter() -> Result<usize, String> {
 }
 
 #[tauri::command]
-fn export_report() -> Result<String, String> {
+fn export_report(days: Option<i64>, unit: String) -> Result<String, String> {
     let storage = Storage::new(default_database_path()).map_err(|error| error.to_string())?;
-    let readings = storage
+    let readings = filter_recent(&storage
         .get_all_readings()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())?, days);
     let thresholds = Thresholds::default();
     let stats = ExportStatistics::generate(&readings, thresholds);
     let path = default_export_dir().join("AccuChek-Local-Report.pdf");
-    PdfExporter::new(&readings, &stats, thresholds, GlucoseUnit::MgDl).export(&path)?;
+    let glucose_unit = if unit == "mmol" { GlucoseUnit::MmolL } else { GlucoseUnit::MgDl };
+    PdfExporter::new(&readings, &stats, thresholds, glucose_unit).export(&path)?;
     Ok(path.to_string_lossy().into_owned())
 }
 

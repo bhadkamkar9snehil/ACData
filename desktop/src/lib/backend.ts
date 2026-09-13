@@ -18,12 +18,15 @@ export async function syncMeter(): Promise<number> {
   return invoke<number>("sync_meter");
 }
 
-export async function exportReport(): Promise<string> {
+export async function exportReport(
+  days: number | null,
+  unit: "mg" | "mmol",
+): Promise<string> {
   if (!inDesktop()) {
     window.print();
     return "Print dialog opened";
   }
-  return invoke<string>("export_report");
+  return invoke<string>("export_report", { days, unit });
 }
 
 export async function loadContext(): Promise<ContextData> {

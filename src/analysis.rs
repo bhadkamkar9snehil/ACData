@@ -7,6 +7,33 @@ use crate::storage::StoredReading;
 
 pub const ANALYSIS_SCHEMA_VERSION: &str = "1.0";
 
+pub fn filter_recent(readings: &[StoredReading], days: Option<i64>) -> Vec<StoredReading> {
+    let Some(days) = days else {
+        return readings.to_vec();
+    };
+    let dates = readings.iter().filter_map(|reading| {
+        reading
+            .timestamp
+            .get(0..10)
+            .and_then(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+    });
+    let Some(newest) = dates.max() else {
+        return Vec::new();
+    };
+    let cutoff = newest - chrono::Duration::days(days);
+    readings
+        .iter()
+        .filter(|reading| {
+            reading
+                .timestamp
+                .get(0..10)
+                .and_then(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+                .is_some_and(|date| date >= cutoff && date <= newest)
+        })
+        .cloned()
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BucketSummary {
     pub label: String,
@@ -244,7 +271,7 @@ fn median_f64(values: &[f64]) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_trend_changes, median};
+    use super::{detect_trend_changes, filter_recent, median};
     use crate::storage::StoredReading;
 
     #[test]
@@ -308,5 +335,31 @@ mod tests {
         assert_eq!(report.meal_context[0].label, "Fasting");
         row.tags = None;
         assert_eq!(super::analyze(&[row]).meal_context[0].label, "Unclassified");
+    }
+
+    #[test]
+    fn report_period_is_anchored_to_newest_meter_reading() {
+        let rows = (1..=10)
+            .map(|id| StoredReading {
+                id,
+                epoch: id,
+                timestamp: format!("2026-09-{id:02} 08:00:00"),
+                mg_dl: 100,
+                mmol_l: 5.6,
+                raw_value: 100,
+                status: 0,
+                range_state: "normal".to_owned(),
+                device_key: "test".to_owned(),
+                occurrence: 0,
+                note: None,
+                tags: None,
+                imported_at: "2026-09-10".to_owned(),
+                meal_context: None,
+                meal_event_id: None,
+                quality_note: None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(filter_recent(&rows, Some(7)).len(), 8);
+        assert_eq!(filter_recent(&rows, None).len(), 10);
     }
 }
