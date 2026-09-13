@@ -26,6 +26,14 @@ export type MedicationChange = {
   reason?: string;
   notes?: string;
 };
+export type MealEvent = {
+  id: number;
+  occurred_at: string;
+  meal_type: string;
+  description?: string;
+  carbs_grams?: number;
+  notes?: string;
+};
 export type InsulinDose = {
   id: number;
   taken_at: string;
@@ -36,7 +44,7 @@ export type InsulinDose = {
   notes?: string;
 };
 export type ContextData = {
-  meals: unknown[];
+  meals: MealEvent[];
   medicationChanges: MedicationChange[];
   insulinDoses: InsulinDose[];
 };

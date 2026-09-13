@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   ContextData,
   InsulinDose,
+  MealEvent,
   MedicationChange,
   Reading,
 } from "./types";
@@ -43,8 +44,19 @@ export async function saveMedication(
   });
 }
 
+export async function saveMeal(meal: Omit<MealEvent, "id">): Promise<number> {
+  return invoke<number>("add_meal_event", { event: { id: 0, ...meal } });
+}
+
 export async function saveInsulin(
   dose: Omit<InsulinDose, "id">,
 ): Promise<number> {
   return invoke<number>("add_insulin_dose", { dose: { id: 0, ...dose } });
+}
+
+export async function saveReadingContext(
+  id: number,
+  context: string | null,
+): Promise<void> {
+  return invoke<void>("set_reading_context", { id, context });
 }

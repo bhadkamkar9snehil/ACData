@@ -45,6 +45,16 @@ table {
   text-align: left;
   font-size: 13px;
 }
+.context-select {
+  min-width: 165px;
+  min-height: 34px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+.context-select:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 th {
   font-size: 10px;
   letter-spacing: 0.12em;
@@ -269,6 +279,19 @@ code {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+.treatment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+@media (max-width: 1200px) {
+  .treatment-grid {
+    grid-template-columns: 1fr;
+  }
+  .treatment-grid .panel {
+    margin-bottom: 0;
+  }
 }
 textarea {
   min-height: 82px;

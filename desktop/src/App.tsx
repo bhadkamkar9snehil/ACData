@@ -48,7 +48,7 @@ export function App() {
   const pages = {
     overview: <Overview readings={visibleReadings} isDemo={isDemo} />,
     explore: <Explore readings={visibleReadings} />,
-    readings: <Readings readings={visibleReadings} />,
+    readings: <Readings readings={visibleReadings} onUpdated={refresh} />,
     treatments: <Treatments />,
     import: <ImportPage onImported={refresh} />,
     reports: <Reports readings={visibleReadings} />,

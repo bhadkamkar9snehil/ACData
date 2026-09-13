@@ -42,7 +42,7 @@ fn get_readings() -> Result<Vec<ReadingDto>, String> {
                     timestamp: row.timestamp,
                     mg_dl: row.mg_dl,
                     status: row.status,
-                    meal: row.tags,
+                    meal: row.meal_context.or(row.tags),
                 })
                 .collect()
         })
@@ -87,10 +87,24 @@ fn add_medication_change(change: MedicationChange) -> Result<i64, String> {
 }
 
 #[tauri::command]
+fn add_meal_event(event: MealEvent) -> Result<i64, String> {
+    Storage::new(default_database_path())
+        .and_then(|storage| storage.add_meal_event(&event))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn add_insulin_dose(dose: InsulinDose) -> Result<i64, String> {
     Storage::new(default_database_path())
         .and_then(|storage| storage.add_insulin_dose(&dose))
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_reading_context(id: i64, context: Option<String>) -> Result<(), String> {
+    let storage = Storage::new(default_database_path()).map_err(|error| error.to_string())?;
+    let updated = storage.set_reading_context(id, context.as_deref(), None).map_err(|error| error.to_string())?;
+    if updated == 1 { Ok(()) } else { Err(format!("Reading {id} was not found")) }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -100,7 +114,7 @@ pub fn run() {
             get_readings,
             sync_meter,
             export_report
-            ,get_context, add_medication_change, add_insulin_dose
+            ,get_context, add_medication_change, add_meal_event, add_insulin_dose, set_reading_context
         ])
         .run(tauri::generate_context!())
         .expect("failed to run AccuChek Local");

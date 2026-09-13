@@ -4,6 +4,7 @@ import {
   inDesktop,
   loadContext,
   saveInsulin,
+  saveMeal,
   saveMedication,
 } from "../lib/backend";
 import type { ContextData } from "../lib/types";
@@ -29,6 +30,16 @@ export function Treatments() {
     });
     refresh();
   };
+  const meal = async (form: FormData) => {
+    await saveMeal({
+      occurred_at: String(form.get("time")),
+      meal_type: String(form.get("type")),
+      description: String(form.get("description")) || undefined,
+      carbs_grams: Number(form.get("carbs")) || undefined,
+      notes: String(form.get("notes")) || undefined,
+    });
+    refresh();
+  };
   const insulin = async (form: FormData) => {
     await saveInsulin({
       taken_at: String(form.get("time")),
@@ -41,6 +52,10 @@ export function Treatments() {
   };
 
   const timeline = [
+    ...context.meals.map((x) => ({
+      time: x.occurred_at,
+      text: `${x.meal_type}${x.description ? ` · ${x.description}` : ""}${x.carbs_grams ? ` · ${x.carbs_grams} g carbs` : ""}`,
+    })),
     ...context.medicationChanges.map((x) => ({
       time: x.effective_at,
       text: `${x.medication_name}${x.new_dose ? ` · ${x.new_dose} ${x.dose_unit ?? ""}` : ""}`,
@@ -66,7 +81,43 @@ export function Treatments() {
           Open the Windows app to save private treatment information.
         </div>
       )}
-      <div className="analysis-grid">
+      <div className="treatment-grid">
+        <EventForm title="Meal event" action={meal}>
+          <label>
+            Meal time
+            <input required name="time" type="datetime-local" />
+          </label>
+          <label>
+            Meal
+            <select name="type">
+              <option>Breakfast</option>
+              <option>Lunch</option>
+              <option>Dinner</option>
+              <option>Snack</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <div className="field-row">
+            <label>
+              Description
+              <input name="description" placeholder="What was eaten" />
+            </label>
+            <label>
+              Carbohydrate estimate
+              <input
+                min="0"
+                step="1"
+                name="carbs"
+                type="number"
+                placeholder="grams, optional"
+              />
+            </label>
+          </div>
+          <label>
+            Notes
+            <textarea name="notes" />
+          </label>
+        </EventForm>
         <EventForm title="Medication change" action={medication}>
           <label>
             Effective time
