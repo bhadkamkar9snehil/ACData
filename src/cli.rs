@@ -20,6 +20,7 @@ enum Command {
     Paths,
     Data(String),
     Analyze(String),
+    Events(String),
 }
 
 fn parse_args<I, S>(args: I) -> Result<Command, String>
@@ -46,6 +47,17 @@ where
         [command, period] if command == "data" => Ok(Command::Data(period.to_owned())),
         [command] if command == "analyze" => Ok(Command::Analyze("30d".to_owned())),
         [command, period] if command == "analyze" => Ok(Command::Analyze(period.to_owned())),
+        [command] if command == "events" => Ok(Command::Events("30d".to_owned())),
+        [command, period] if command == "events" => Ok(Command::Events(period.to_owned())),
+        [command, flag, period]
+            if matches!(command.as_str(), "data" | "analyze" | "events") && flag == "--period" =>
+        {
+            match command.as_str() {
+                "data" => Ok(Command::Data(period.to_owned())),
+                "analyze" => Ok(Command::Analyze(period.to_owned())),
+                _ => Ok(Command::Events(period.to_owned())),
+            }
+        }
         [command, trailing @ ..] if is_known_command(command) => Err(format!(
             "unexpected argument{} after '{command}': {}",
             if trailing.len() == 1 { "" } else { "s" },
@@ -78,6 +90,7 @@ fn is_known_command(command: &str) -> bool {
             | "paths"
             | "data"
             | "analyze"
+            | "events"
     )
 }
 
@@ -100,6 +113,33 @@ pub fn run() -> Result<(), AccuChekError> {
         println!("{}", serde_json::to_string_pretty(&value)?);
         return Ok(());
     }
+    if let Command::Events(period) = &command {
+        let (_, db_path) = load_config(debug_mode);
+        let storage = Storage::new(db_path)?;
+        let meals = storage
+            .get_meal_events()?
+            .into_iter()
+            .filter(|event| timestamp_in_period(&event.occurred_at, period).unwrap_or(false))
+            .collect::<Vec<_>>();
+        let medication_changes = storage
+            .get_medication_changes()?
+            .into_iter()
+            .filter(|event| timestamp_in_period(&event.effective_at, period).unwrap_or(false))
+            .collect::<Vec<_>>();
+        let insulin_doses = storage
+            .get_insulin_doses()?
+            .into_iter()
+            .filter(|event| timestamp_in_period(&event.taken_at, period).unwrap_or(false))
+            .collect::<Vec<_>>();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": "1.0", "period": period,
+                "meals": meals, "medication_changes": medication_changes, "insulin_doses": insulin_doses
+            }))?
+        );
+        return Ok(());
+    }
 
     execute_command(command, |device_index| {
         let (config, db_path) = load_config(debug_mode);
@@ -117,7 +157,9 @@ where
         Command::Help => print_help(),
         Command::Version => println!("accuchek {}", env!("CARGO_PKG_VERSION")),
         Command::Paths => cmd_show_paths(),
-        Command::Data(_) | Command::Analyze(_) => unreachable!("handled before execution"),
+        Command::Data(_) | Command::Analyze(_) | Command::Events(_) => {
+            unreachable!("handled before execution")
+        }
     }
 
     Ok(())
@@ -173,34 +215,37 @@ fn filter_period(
     readings: Vec<crate::storage::StoredReading>,
     period: &str,
 ) -> Result<Vec<crate::storage::StoredReading>, AccuChekError> {
+    Ok(readings
+        .into_iter()
+        .filter(|reading| timestamp_in_period(&reading.timestamp, period).unwrap_or(false))
+        .collect())
+}
+
+fn timestamp_in_period(timestamp: &str, period: &str) -> Result<bool, AccuChekError> {
     use chrono::{Duration, Local, NaiveDate};
     let today = Local::now().date_naive();
-    let start: Option<NaiveDate> = match period {
-        "all" => None,
-        "yesterday" => Some(today - Duration::days(1)),
-        "last-week" | "7d" => Some(today - Duration::days(7)),
-        "30d" => Some(today - Duration::days(30)),
-        value => Some(NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+    let start = match period {
+        "all" => return Ok(true),
+        "yesterday" => today - Duration::days(1),
+        "last-week" | "7d" => today - Duration::days(7),
+        "30d" => today - Duration::days(30),
+        value => NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
             AccuChekError::InvalidArguments(format!(
                 "invalid period '{value}': use yesterday, last-week, 30d, all, or YYYY-MM-DD"
             ))
-        })?),
+        })?,
     };
-    Ok(readings
-        .into_iter()
-        .filter(|reading| {
-            let date = reading
-                .timestamp
-                .get(0..10)
-                .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok());
-            match (period, start, date) {
-                ("yesterday", Some(day), Some(date)) => date == day,
-                (_, Some(day), Some(date)) => date >= day && date <= today,
-                (_, None, _) => true,
-                _ => false,
-            }
-        })
-        .collect())
+    let Some(date) = timestamp
+        .get(0..10)
+        .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+    else {
+        return Ok(false);
+    };
+    Ok(if period == "yesterday" {
+        date == start
+    } else {
+        date >= start && date <= today
+    })
 }
 
 fn cmd_sync(
@@ -242,6 +287,7 @@ fn print_help() {
     eprintln!("  accuchek path               Show data file locations");
     eprintln!("  accuchek data [period]      Export stable JSON readings");
     eprintln!("  accuchek analyze [period]   Export pattern analysis JSON");
+    eprintln!("  accuchek events [period]    Export meal and treatment events");
     eprintln!("  accuchek help               Show this help");
     eprintln!();
     eprintln!("ENVIRONMENT:");
