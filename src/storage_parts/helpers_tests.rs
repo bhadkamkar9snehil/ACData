@@ -140,4 +140,40 @@ mod tests {
         assert_eq!(rows[0].note.as_deref(), Some("keep me"));
         assert_eq!(rows[0].tags.as_deref(), Some("fasting"));
     }
+
+    #[test]
+    fn partially_applied_v3_migration_is_resumed_idempotently() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE readings (
+                id INTEGER PRIMARY KEY,
+                epoch INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                mg_dl INTEGER NOT NULL,
+                mmol_l REAL NOT NULL,
+                raw_value INTEGER NOT NULL,
+                status INTEGER NOT NULL DEFAULT 0,
+                range_state TEXT NOT NULL DEFAULT 'normal',
+                device_key TEXT NOT NULL,
+                occurrence INTEGER NOT NULL DEFAULT 0,
+                note TEXT,
+                tags TEXT,
+                imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                meal_context TEXT,
+                UNIQUE(device_key, timestamp, raw_value, status, occurrence)
+             );
+             PRAGMA user_version = 2;",
+        )
+        .unwrap();
+
+        Storage::initialize_schema(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 3);
+        for column in ["meal_context", "meal_event_id", "quality_note"] {
+            assert!(Storage::column_exists(&conn, "readings", column).unwrap());
+        }
+    }
 }

@@ -22,18 +22,7 @@ impl Storage {
             return Ok(());
         }
 
-        let has_raw_value = {
-            let mut stmt = conn.prepare("PRAGMA table_info(readings)")?;
-            let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
-            let mut found = false;
-            for column in columns {
-                if column? == "raw_value" {
-                    found = true;
-                    break;
-                }
-            }
-            found
-        };
+        let has_raw_value = Self::column_exists(conn, "readings", "raw_value")?;
 
         if !has_raw_value {
             conn.execute_batch(
@@ -193,8 +182,7 @@ impl Storage {
             return Ok(());
         }
         conn.execute_batch(
-            "BEGIN IMMEDIATE;
-             CREATE TABLE IF NOT EXISTS meal_events (
+            "CREATE TABLE IF NOT EXISTS meal_events (
                 id INTEGER PRIMARY KEY, occurred_at TEXT NOT NULL, meal_type TEXT NOT NULL,
                 description TEXT, carbs_grams REAL, notes TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
              );
@@ -208,16 +196,39 @@ impl Storage {
                 insulin_type TEXT NOT NULL, units REAL NOT NULL CHECK(units > 0),
                 meal_event_id INTEGER REFERENCES meal_events(id), notes TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-             );
-             ALTER TABLE readings ADD COLUMN meal_context TEXT;
-             ALTER TABLE readings ADD COLUMN meal_event_id INTEGER REFERENCES meal_events(id);
-             ALTER TABLE readings ADD COLUMN quality_note TEXT;
-             CREATE INDEX IF NOT EXISTS idx_meal_events_time ON meal_events(occurred_at);
+             );",
+        )?;
+
+        for (column, definition) in [
+            ("meal_context", "meal_context TEXT"),
+            (
+                "meal_event_id",
+                "meal_event_id INTEGER REFERENCES meal_events(id)",
+            ),
+            ("quality_note", "quality_note TEXT"),
+        ] {
+            if !Self::column_exists(conn, "readings", column)? {
+                conn.execute(&format!("ALTER TABLE readings ADD COLUMN {definition}"), [])?;
+            }
+        }
+
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_meal_events_time ON meal_events(occurred_at);
              CREATE INDEX IF NOT EXISTS idx_medication_changes_time ON medication_changes(effective_at);
              CREATE INDEX IF NOT EXISTS idx_insulin_doses_time ON insulin_doses(taken_at);
-             PRAGMA user_version = 3;
-             COMMIT;",
+             PRAGMA user_version = 3;",
         )?;
         Ok(())
+    }
+
+    fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+        let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        for existing in columns {
+            if existing? == column {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }
