@@ -1,6 +1,6 @@
-# Accu-Chek USB Downloader (Rust)
+# ACData — AccuChek Local
 
-A minimal Rust application to download and export glucose readings from Roche Accu-Chek devices over USB.
+A private Windows application for extracting Accu-Chek Instant readings, analysing glucose patterns, and producing doctor-ready reports.
 
 ## Requirements
 
