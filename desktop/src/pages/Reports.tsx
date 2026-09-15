@@ -1,8 +1,8 @@
-import { Check, FileDown } from "lucide-react";
+import { Check, FileDown, Sheet } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../components/Button";
 import { filterByDays, summarize } from "../lib/analytics";
-import { exportReport } from "../lib/backend";
+import { exportExcel, exportReport } from "../lib/backend";
 import type { Reading } from "../lib/types";
 
 export function Reports({ readings }: { readings: Reading[] }) {
@@ -18,10 +18,12 @@ export function Reports({ readings }: { readings: Reading[] }) {
     ? Math.round((stats.counts.range / stats.total) * 100)
     : 0;
 
-  const save = async () => {
+  const save = async (format: "pdf" | "excel") => {
     setStatus("working");
     try {
-      const path = await exportReport(period === "all" ? null : period, unit);
+      const path = format === "pdf"
+        ? await exportReport(period === "all" ? null : period, unit)
+        : await exportExcel(period === "all" ? null : period);
       setMessage(path);
       setStatus("done");
     } catch (error) {
@@ -92,9 +94,17 @@ export function Reports({ readings }: { readings: Reading[] }) {
           <Button
             icon={<FileDown size={17} />}
             disabled={status === "working" || !stats.total}
-            onClick={() => void save()}
+            onClick={() => void save("pdf")}
           >
             {status === "working" ? "Building report…" : "Export private PDF"}
+          </Button>
+          <Button
+            icon={<Sheet size={17} />}
+            tone="quiet"
+            disabled={status === "working" || !readings.length}
+            onClick={() => void save("excel")}
+          >
+            Export to Excel
           </Button>
           {status !== "idle" && status !== "working" && (
             <p

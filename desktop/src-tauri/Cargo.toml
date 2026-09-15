@@ -8,6 +8,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 accuchek = { path = "../.." }
+rust_xlsxwriter = "0.99"
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 

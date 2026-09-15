@@ -30,6 +30,11 @@ export async function exportReport(
   return invoke<string>("export_report", { days, unit });
 }
 
+export async function exportExcel(days: number | null): Promise<string> {
+  if (!inDesktop()) throw new Error("Open the packaged desktop app to export Excel.");
+  return invoke<string>("export_excel", { days });
+}
+
 export async function loadContext(): Promise<ContextData> {
   return inDesktop()
     ? invoke<ContextData>("get_context")

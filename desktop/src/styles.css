@@ -322,30 +322,6 @@ main {
   font-size: 10px;
   fill: #757169;
 }
-.insight {
-  display: grid;
-  grid-template-columns: 48px 1fr;
-  gap: 16px;
-  padding: 18px 0;
-  border-top: 1px solid var(--line);
-}
-.insight > span {
-  font:
-    italic 20px Georgia,
-    serif;
-  color: var(--coral);
-}
-.insight b {
-  font:
-    500 19px Georgia,
-    serif;
-}
-.insight p {
-  margin: 6px 0;
-  color: var(--muted);
-  font-size: 13px;
-  max-width: 680px;
-}
 .empty-workspace {
   min-height: 480px;
   display: grid;
