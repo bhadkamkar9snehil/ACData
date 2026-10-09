@@ -64,16 +64,4 @@ mod tests {
         assert_eq!(model_name(Some(966)), "Instant S (single-button)");
     }
 
-    #[test]
-    fn roche_vendor_constant_is_expected() {
-        assert_eq!(ROCHE_VENDOR_ID, 0x173a);
-    }
-
-    #[test]
-    fn duplicate_collision_key_components_can_be_counted_by_caller() {
-        let mut counts = std::collections::HashMap::<(&str, u16, u16), usize>::new();
-        *counts.entry(("2026-09-13T14:05:00", 123, 0)).or_default() += 1;
-        *counts.entry(("2026-09-13T14:05:00", 123, 0)).or_default() += 1;
-        assert_eq!(counts.values().next().copied(), Some(2));
-    }
 }

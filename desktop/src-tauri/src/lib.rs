@@ -173,39 +173,6 @@ fn write_excel(
     workbook.save(path).map_err(|error| error.to_string())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::write_excel;
-    use accuchek::storage::StoredReading;
-
-    #[test]
-    fn writes_a_real_xlsx_workbook() {
-        let path = std::env::temp_dir().join("accuchek-local-export-test.xlsx");
-        let reading = StoredReading {
-            id: 1,
-            epoch: 1,
-            timestamp: "2026-09-15T07:35:00".into(),
-            mg_dl: 191,
-            mmol_l: 10.6,
-            raw_value: 191,
-            status: 0,
-            range_state: "high".into(),
-            device_key: "meter".into(),
-            occurrence: 0,
-            note: None,
-            tags: None,
-            imported_at: "2026-09-15T08:00:00".into(),
-            meal_context: Some("fasting".into()),
-            meal_event_id: None,
-            quality_note: None,
-        };
-
-        write_excel(&[reading], &path).unwrap();
-        assert!(std::fs::metadata(&path).unwrap().len() > 1_000);
-        std::fs::remove_file(path).unwrap();
-    }
-}
-
 #[tauri::command]
 fn get_context() -> Result<ContextDto, String> {
     let storage = Storage::new(default_database_path()).map_err(|error| error.to_string())?;

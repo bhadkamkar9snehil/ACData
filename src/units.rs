@@ -226,30 +226,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mgdl_formatting() {
-        let mgdl = MgDl(180);
-        assert_eq!(mgdl.format(), "180 mg/dL");
-        assert_eq!(mgdl.format_value(), "180");
-    }
-
-    #[test]
-    fn test_mmol_formatting() {
-        let mmol = MmolL(10.0);
-        assert_eq!(mmol.format(), "10.0 mmol/L");
-        assert_eq!(mmol.format_value(), "10.0");
-    }
-
-    #[test]
-    fn test_glucose_unit_format() {
-        // Using device-provided values directly
-        let mg_dl = 180;
-        let mmol_l = 10.0;
-
-        assert_eq!(GlucoseUnit::MgDl.format(mg_dl, mmol_l), "180 mg/dL");
-        assert_eq!(GlucoseUnit::MmolL.format(mg_dl, mmol_l), "10.0 mmol/L");
-    }
-
-    #[test]
     fn test_thresholds_classification() {
         let thresholds = Thresholds::default();
 
@@ -260,14 +236,4 @@ mod tests {
         assert_eq!(thresholds.classify(300), GlucoseRange::VeryHigh);
     }
 
-    #[test]
-    fn test_thresholds_display() {
-        let thresholds = Thresholds::default();
-
-        assert_eq!(thresholds.format_range(GlucoseUnit::MgDl), "70-180 mg/dL");
-        assert_eq!(
-            thresholds.format_range(GlucoseUnit::MmolL),
-            "3.9-10.0 mmol/L"
-        );
-    }
 }

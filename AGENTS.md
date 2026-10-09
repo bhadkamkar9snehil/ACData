@@ -26,6 +26,8 @@ Add `--json` for machine-readable output. Output includes a `schema_version`; co
 
 ## Development checks
 
+Keep tests focused on observable failures: lost or duplicated records, migrations, malformed protocol input, incorrect analytics, and command boundaries. Do not add tests that restate constants, test standard-library behavior, mirror getters or formatting, assert arbitrary output file sizes, or exist solely to raise coverage. Prefer a small regression or workflow check over per-function scaffolding. Run only checks relevant to the change; do not rebuild or reinstall for test-only edits.
+
 Run locally:
 
 ```powershell

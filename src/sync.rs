@@ -41,35 +41,3 @@ pub fn sync_device(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::device::{GlucoseReading, ReadingRange};
-
-    use super::SyncSummary;
-
-    fn reading(id: usize) -> GlucoseReading {
-        GlucoseReading {
-            id,
-            epoch: id as i64,
-            timestamp: "2026-09-13T12:00:00".to_string(),
-            mg_dl: 100,
-            mmol_l: 5.6,
-            raw_value: 100,
-            status: 0,
-            range_state: ReadingRange::Normal,
-            device_key: "test-meter".to_string(),
-        }
-    }
-
-    #[test]
-    fn sync_summary_reports_duplicate_count() {
-        let summary = SyncSummary {
-            readings: vec![reading(1), reading(2), reading(3)],
-            imported_count: 2,
-            total_count: 10,
-            database_path: "accuchek.db".to_string(),
-        };
-
-        assert_eq!(summary.duplicate_count(), 1);
-    }
-}
