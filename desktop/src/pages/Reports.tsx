@@ -105,6 +105,7 @@ export function Reports({ readings }: { readings: Reading[] }) {
           stats={stats}
           sampledRange={sampledRange}
           period={period}
+          unit={unit}
         />
       </div>
     </>
@@ -115,11 +116,15 @@ function ReportPreview({
   stats,
   sampledRange,
   period,
+  unit,
 }: {
   stats: ReturnType<typeof summarize>;
   sampledRange: number;
   period: 28 | 90 | "all";
+  unit: "mg" | "mmol";
 }) {
+  const display = (value: number) => unit === "mmol" ? (value / 18).toFixed(1) : Math.round(value);
+  const unitLabel = unit === "mmol" ? "mmol/L" : "mg/dL";
   return (
     <section className="report-preview">
       <div className="report-preview-heading">
@@ -141,18 +146,18 @@ function ReportPreview({
       <div className="report-stat-grid">
         <div>
           <span>Median</span>
-          <b>{stats.median}</b>
-          <small>mg/dL</small>
+          <b>{display(stats.median)}</b>
+          <small>{unitLabel}</small>
         </div>
         <div>
           <span>Sampled in range</span>
           <b>{sampledRange}%</b>
-          <small>70–180 mg/dL</small>
+          <small>{display(70)}–{display(180)} {unitLabel}</small>
         </div>
         <div>
           <span>Variability</span>
-          <b>{Math.round(stats.deviation)}</b>
-          <small>mg/dL sample SD</small>
+          <b>{display(stats.deviation)}</b>
+          <small>{unitLabel} sample SD</small>
         </div>
       </div>
       <div className="report-outline">
