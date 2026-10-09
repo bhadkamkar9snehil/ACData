@@ -26,6 +26,16 @@ body {
 button {
   font: inherit;
 }
+::selection {
+  background: var(--teal);
+  color: var(--paper);
+}
+input, textarea {
+  caret-color: var(--teal);
+}
+.metrics, table, .report-stat-grid {
+  font-variant-numeric: tabular-nums;
+}
 .app-shell {
   display: grid;
   grid-template-columns: 224px 1fr;

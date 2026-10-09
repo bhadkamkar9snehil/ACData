@@ -9,7 +9,7 @@ import { Placeholder } from "./pages/Placeholder";
 import { Readings } from "./pages/Readings";
 import { Reports } from "./pages/Reports";
 import { Treatments } from "./pages/Treatments";
-import { loadReadings } from "./lib/backend";
+import { inDesktop, loadReadings } from "./lib/backend";
 import type { Reading } from "./lib/types";
 
 const copy: Record<Exclude<Page, "overview">, [string, string]> = {
@@ -36,17 +36,29 @@ const copy: Record<Exclude<Page, "overview">, [string, string]> = {
 export function App() {
   const [page, setPage] = useState<Page>("overview");
   const [readings, setReadings] = useState<Reading[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const refresh = useCallback(
-    async () => setReadings(await loadReadings()),
+    async () => {
+      setLoading(true);
+      setError("");
+      try {
+        setReadings(await loadReadings());
+      } catch (error) {
+        setError(String(error));
+      } finally {
+        setLoading(false);
+      }
+    },
     [],
   );
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  const visibleReadings = readings.length ? readings : demoReadings;
-  const isDemo = readings.length === 0;
+  const isDemo = !inDesktop();
+  const visibleReadings = isDemo ? demoReadings : readings;
   const pages = {
-    overview: <Overview readings={visibleReadings} isDemo={isDemo} />,
+    overview: <Overview readings={visibleReadings} isDemo={isDemo} onImport={() => setPage("import")} />,
     explore: <Explore readings={visibleReadings} />,
     readings: <Readings readings={visibleReadings} onUpdated={refresh} />,
     treatments: <Treatments />,
@@ -70,7 +82,7 @@ export function App() {
   return (
     <div className="app-shell">
       <Sidebar page={page} onChange={setPage} />
-      <main>{pages[page]}</main>
+      <main>{error ? <section className="panel" role="alert"><h2>Could not load your readings</h2><p>{error}</p><button className="button" onClick={() => void refresh()}>Try again</button></section> : loading ? <p role="status">Loading readings…</p> : pages[page]}</main>
     </div>
   );
 }

@@ -227,24 +227,6 @@ code {
 .report-footnote {
   margin-top: 54px;
 }
-.report-contents {
-  display: grid;
-  gap: 9px;
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.report-contents span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.report-contents svg {
-  width: 14px;
-  color: var(--teal);
-}
 .export-status {
   overflow-wrap: anywhere;
   margin: 0;
@@ -259,6 +241,10 @@ code {
   font:
     500 23px Georgia,
     serif;
+}
+.report-controls {
+  align-content: start;
+  align-self: start;
 }
 @media (max-width: 600px) {
   .report-preview {

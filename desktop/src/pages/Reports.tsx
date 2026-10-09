@@ -1,4 +1,4 @@
-import { Check, FileDown, Sheet } from "lucide-react";
+import { FileDown, Sheet } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../components/Button";
 import { filterByDays, summarize } from "../lib/analytics";
@@ -36,7 +36,7 @@ export function Reports({ readings }: { readings: Reading[] }) {
     <>
       <header className="page-header">
         <div>
-          <h1>Doctor report</h1>
+          <h1>Reports & exports</h1>
           <p>
             A concise clinical summary followed by patterns, charts and
             auditable source readings.
@@ -73,47 +73,30 @@ export function Reports({ readings }: { readings: Reading[] }) {
               <option value="mmol">mmol/L</option>
             </select>
           </label>
-          <div className="report-contents">
-            <b>Included automatically</b>
-            <span>
-              <Check /> Safety signals and sampled range
-            </span>
-            <span>
-              <Check /> Time-of-day and meal categories
-            </span>
-            <span>
-              <Check /> Trend changes and unusual readings
-            </span>
-            <span>
-              <Check /> Daily and hourly charts
-            </span>
-            <span>
-              <Check /> Source-reading appendix
-            </span>
-          </div>
           <Button
             icon={<FileDown size={17} />}
             disabled={status === "working" || !stats.total}
             onClick={() => void save("pdf")}
           >
-            {status === "working" ? "Building report…" : "Export private PDF"}
+            Export doctor PDF
           </Button>
           <Button
             icon={<Sheet size={17} />}
             tone="quiet"
-            disabled={status === "working" || !readings.length}
+            disabled={status === "working" || !stats.total}
             onClick={() => void save("excel")}
           >
             Export to Excel
           </Button>
+          {status === "working" && <p role="status">Preparing export…</p>}
           {status !== "idle" && status !== "working" && (
             <p
               role="status"
               className={`export-status export-status--${status}`}
             >
               {status === "done"
-                ? "Report saved locally: "
-                : "Could not create report: "}
+                ? "Saved locally: "
+                : "Export failed: "}
               {message}
             </p>
           )}
